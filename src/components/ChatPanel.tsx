@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { Session, Message } from "@/lib/mock-data";
 import { quickReplies } from "@/lib/mock-data";
 import { StatusBadge, TagBadge, ChannelIcon } from "./StatusBadge";
-import { Bot, User, Paperclip, Image as ImageIcon, Send, Zap, UserCheck, XCircle, Download, MoreVertical, FileText } from "lucide-react";
+import { Bot, User, Paperclip, Image as ImageIcon, Send, Zap, UserCheck, XCircle, Download, MoreVertical, FileText, Sparkles, ArrowRightLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -17,6 +17,7 @@ export function ChatPanel({ session, onTakeover, onEnd, onSendMessage, onExport 
   const [input, setInput] = useState("");
   const [showQuick, setShowQuick] = useState(false);
   const [showAiHistory, setShowAiHistory] = useState(false);
+  const [showSummary, setShowSummary] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,12 +67,23 @@ export function ChatPanel({ session, onTakeover, onEnd, onSendMessage, onExport 
           >
             <Bot className="h-3.5 w-3.5" />AI 历史
           </button>
+          {session.aiSummary && (
+            <button
+              onClick={() => setShowSummary((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                showSummary ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"
+              )}
+            >
+              <Sparkles className="h-3.5 w-3.5" />AI 摘要
+            </button>
+          )}
           {session.status !== "human" && canInput && (
             <button
               onClick={() => onTakeover(session.id)}
               className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm hover:opacity-90"
             >
-              <UserCheck className="h-3.5 w-3.5" />人工接管
+              <UserCheck className="h-3.5 w-3.5" />开始接待
             </button>
           )}
           {canInput && (
