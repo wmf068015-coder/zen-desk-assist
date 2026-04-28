@@ -1,8 +1,8 @@
 export type SessionStatus = "ai" | "waiting" | "human" | "ended" | "timeout";
 export type Channel = "web" | "wechat" | "app" | "weibo" | "email";
 export type SessionTag = "presale" | "logistics" | "refund" | "complaint" | "tech" | "invalid";
-export type MessageSender = "customer" | "ai" | "agent";
-export type MessageType = "text" | "image" | "file";
+export type MessageSender = "customer" | "ai" | "agent" | "system";
+export type MessageType = "text" | "image" | "file" | "system";
 
 export interface Message {
   id: string;
