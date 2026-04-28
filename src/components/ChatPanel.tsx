@@ -103,6 +103,44 @@ export function ChatPanel({ session, onTakeover, onEnd, onSendMessage, onExport 
         </div>
       </div>
 
+      {/* AI Summary */}
+      {showSummary && session.aiSummary && (
+        <div className="border-b bg-gradient-to-r from-primary/5 via-status-ai/5 to-transparent px-6 py-3">
+          <div className="mx-auto max-w-3xl">
+            <div className="flex items-start gap-3 rounded-xl border border-status-ai/20 bg-card/70 p-3 shadow-sm backdrop-blur">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-status-ai/15">
+                <Sparkles className="h-4 w-4 text-status-ai" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold">AI 摘要总结</span>
+                  <span className={cn(
+                    "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                    session.aiSummary.sentiment === "positive" && "bg-success/15 text-success",
+                    session.aiSummary.sentiment === "negative" && "bg-destructive/15 text-destructive",
+                    session.aiSummary.sentiment === "neutral" && "bg-muted text-muted-foreground",
+                  )}>
+                    {session.aiSummary.sentiment === "positive" ? "积极" : session.aiSummary.sentiment === "negative" ? "负面" : "中性"}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-medium">{session.aiSummary.intent}</p>
+                <ul className="mt-1.5 space-y-0.5">
+                  {session.aiSummary.keyPoints.map((k, i) => (
+                    <li key={i} className="text-xs text-muted-foreground">• {k}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 rounded-md bg-primary/5 px-2 py-1 text-xs text-primary">
+                  <b>建议：</b>{session.aiSummary.suggestedAction}
+                </p>
+              </div>
+              <button onClick={() => setShowSummary(false)} className="text-muted-foreground hover:text-foreground" title="收起">
+                <XCircle className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="scrollbar-thin flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto max-w-3xl space-y-4">
@@ -111,11 +149,9 @@ export function ChatPanel({ session, onTakeover, onEnd, onSendMessage, onExport 
               今天 {session.startTime}
             </span>
           </div>
-          {session.messages
-            .filter((m) => showAiHistory || m.sender !== "ai" || true)
-            .map((m) => (
-              <MessageBubble key={m.id} message={m} highlight={showAiHistory && m.sender === "ai"} />
-            ))}
+          {session.messages.map((m) => (
+            <MessageBubble key={m.id} message={m} highlight={showAiHistory && m.sender === "ai"} />
+          ))}
           <div ref={endRef} />
         </div>
       </div>
