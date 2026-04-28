@@ -42,6 +42,14 @@ export interface Session {
   transferred: boolean;
   messages: Message[];
   waitingSeconds?: number;
+  queued?: boolean;
+  queuePosition?: number;
+  aiSummary?: {
+    intent: string;
+    keyPoints: string[];
+    sentiment: "positive" | "neutral" | "negative";
+    suggestedAction: string;
+  };
 }
 
 export const CHANNEL_LABELS: Record<Channel, string> = {
