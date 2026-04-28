@@ -1,0 +1,225 @@
+export type SessionStatus = "ai" | "waiting" | "human" | "ended" | "timeout";
+export type Channel = "web" | "wechat" | "app" | "weibo" | "email";
+export type SessionTag = "presale" | "logistics" | "refund" | "complaint" | "tech" | "invalid";
+export type MessageSender = "customer" | "ai" | "agent";
+export type MessageType = "text" | "image" | "file";
+
+export interface Message {
+  id: string;
+  sender: MessageSender;
+  type: MessageType;
+  content: string;
+  time: string;
+  senderName?: string;
+  fileName?: string;
+  fileSize?: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  avatar: string;
+  phone: string;
+  email: string;
+  channel: Channel;
+  currentPage: string;
+  vipLevel?: string;
+  registerDate: string;
+  orders: { id: string; title: string; amount: number; status: string; date: string }[];
+  historySessions: { id: string; date: string; topic: string; rating?: number }[];
+}
+
+export interface Session {
+  id: string;
+  customer: Customer;
+  status: SessionStatus;
+  unread: number;
+  tags: SessionTag[];
+  channel: Channel;
+  lastMessage: string;
+  lastTime: string;
+  startTime: string;
+  transferred: boolean;
+  messages: Message[];
+  waitingSeconds?: number;
+}
+
+export const CHANNEL_LABELS: Record<Channel, string> = {
+  web: "网站",
+  wechat: "微信",
+  app: "APP",
+  weibo: "微博",
+  email: "邮箱",
+};
+
+export const STATUS_LABELS: Record<SessionStatus, string> = {
+  ai: "AI处理中",
+  waiting: "待人工",
+  human: "人工处理中",
+  ended: "已结束",
+  timeout: "已超时",
+};
+
+export const TAG_LABELS: Record<SessionTag, string> = {
+  presale: "售前",
+  logistics: "物流",
+  refund: "退款",
+  complaint: "投诉",
+  tech: "技术问题",
+  invalid: "无效咨询",
+};
+
+const avatars = [
+  "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix",
+  "https://api.dicebear.com/7.x/avataaars/svg?seed=Lily",
+  "https://api.dicebear.com/7.x/avataaars/svg?seed=Max",
+  "https://api.dicebear.com/7.x/avataaars/svg?seed=Zoe",
+  "https://api.dicebear.com/7.x/avataaars/svg?seed=Leo",
+  "https://api.dicebear.com/7.x/avataaars/svg?seed=Mia",
+  "https://api.dicebear.com/7.x/avataaars/svg?seed=Ben",
+  "https://api.dicebear.com/7.x/avataaars/svg?seed=Ava",
+  "https://api.dicebear.com/7.x/avataaars/svg?seed=Tom",
+  "https://api.dicebear.com/7.x/avataaars/svg?seed=Eva",
+];
+
+const customerNames = ["张晓明", "李静怡", "王小虎", "陈思琪", "刘梓轩", "赵紫涵", "孙浩然", "周雅婷", "吴俊杰", "郑欣妍"];
+
+function makeCustomer(i: number): Customer {
+  return {
+    id: `C${1000 + i}`,
+    name: customerNames[i],
+    avatar: avatars[i],
+    phone: `138****${String(1000 + i * 137).slice(-4)}`,
+    email: `user${i}@example.com`,
+    channel: (["web", "wechat", "app", "weibo", "email"] as Channel[])[i % 5],
+    currentPage: ["/products/1203", "/cart", "/order/detail", "/home", "/help"][i % 5],
+    vipLevel: i % 3 === 0 ? "黄金会员" : i % 3 === 1 ? "白银会员" : undefined,
+    registerDate: `2023-0${(i % 9) + 1}-15`,
+    orders: [
+      { id: `O2024${1000 + i}`, title: "无线降噪耳机 Pro", amount: 1299, status: "已完成", date: "2024-12-10" },
+      { id: `O2024${2000 + i}`, title: "智能手表 S2", amount: 2499, status: "配送中", date: "2025-01-08" },
+    ].slice(0, (i % 2) + 1),
+    historySessions: [
+      { id: `H${i}01`, date: "2025-01-05", topic: "咨询产品功能", rating: 5 },
+      { id: `H${i}02`, date: "2024-12-20", topic: "售后退换货", rating: 4 },
+    ],
+  };
+}
+
+const allStatuses: SessionStatus[] = ["ai", "waiting", "human", "human", "ended", "timeout", "ai", "waiting", "human", "ended"];
+const allTags: SessionTag[][] = [
+  ["presale"],
+  ["logistics", "refund"],
+  ["complaint"],
+  ["tech"],
+  ["presale", "logistics"],
+  ["refund"],
+  ["presale"],
+  ["logistics"],
+  ["tech", "complaint"],
+  ["invalid"],
+];
+
+const sampleMessages: Record<number, Message[]> = {
+  0: [
+    { id: "m1", sender: "customer", type: "text", content: "你好，我想咨询一下这款耳机的续航时间", time: "14:21" },
+    { id: "m2", sender: "ai", type: "text", content: "您好！很高兴为您服务 😊 这款无线降噪耳机 Pro 单次充电可以连续使用 30 小时，开启降噪后约 24 小时。", time: "14:21", senderName: "AI助手" },
+    { id: "m3", sender: "customer", type: "text", content: "支持多设备连接吗？", time: "14:22" },
+    { id: "m4", sender: "ai", type: "text", content: "支持的，可以同时连接 2 台设备，在手机和电脑之间无缝切换。", time: "14:22", senderName: "AI助手" },
+    { id: "m5", sender: "customer", type: "text", content: "好的，那现在有什么优惠吗？我想下单", time: "14:23" },
+  ],
+  1: [
+    { id: "m1", sender: "customer", type: "text", content: "我的订单什么时候发货？已经两天了", time: "10:05" },
+    { id: "m2", sender: "ai", type: "text", content: "非常抱歉让您久等，我帮您查询一下订单状态。", time: "10:05", senderName: "AI助手" },
+    { id: "m3", sender: "customer", type: "text", content: "我需要人工客服", time: "10:06" },
+    { id: "m4", sender: "ai", type: "text", content: "好的，正在为您转接人工客服，请稍候…", time: "10:06", senderName: "AI助手" },
+  ],
+  2: [
+    { id: "m1", sender: "customer", type: "text", content: "你们产品有质量问题！我要投诉！", time: "09:30" },
+    { id: "m2", sender: "agent", type: "text", content: "您好，非常抱歉给您带来不便，我是客服小美，请问具体是什么问题呢？", time: "09:31", senderName: "小美" },
+    { id: "m3", sender: "customer", type: "image", content: "https://images.unsplash.com/photo-1583394838336-acd977736f90?w=400", time: "09:32" },
+    { id: "m4", sender: "customer", type: "text", content: "包装破损，产品也有划痕", time: "09:32" },
+    { id: "m5", sender: "agent", type: "text", content: "非常抱歉！我已经记录您的问题，我们会立即为您安排换货，物流单号稍后会发送给您。", time: "09:34", senderName: "小美" },
+  ],
+};
+
+function defaultMessages(i: number): Message[] {
+  return sampleMessages[i] ?? [
+    { id: "d1", sender: "customer", type: "text", content: "你好，在吗？", time: "13:00" },
+    { id: "d2", sender: "ai", type: "text", content: "您好，请问有什么可以帮您？", time: "13:00", senderName: "AI助手" },
+  ];
+}
+
+const lastMessages = [
+  "好的，那现在有什么优惠吗？我想下单",
+  "我需要人工客服",
+  "非常抱歉！已为您安排换货",
+  "APP 无法登录，提示服务器错误",
+  "请问什么时候能发货？",
+  "已经超过 7 天了还没退款",
+  "这款产品支持分期付款吗",
+  "订单号 O20241234 物流停了",
+  "系统一直崩溃，根本没法用",
+  "不回复",
+];
+
+const lastTimes = ["刚刚", "2分钟前", "5分钟前", "12分钟前", "30分钟前", "1小时前", "2小时前", "3小时前", "昨天", "昨天"];
+
+export const sessions: Session[] = Array.from({ length: 10 }, (_, i) => ({
+  id: `S${2025000 + i}`,
+  customer: makeCustomer(i),
+  status: allStatuses[i],
+  unread: [2, 5, 0, 1, 0, 0, 3, 8, 0, 0][i],
+  tags: allTags[i],
+  channel: (["web", "wechat", "app", "weibo", "email"] as Channel[])[i % 5],
+  lastMessage: lastMessages[i],
+  lastTime: lastTimes[i],
+  startTime: "2025-01-15 14:20",
+  transferred: [false, true, true, false, false, false, false, true, true, false][i],
+  messages: defaultMessages(i),
+  waitingSeconds: allStatuses[i] === "waiting" ? [null, 120, null, null, null, null, null, 340, null, null][i] ?? undefined : undefined,
+}));
+
+export const quickReplies = [
+  { id: "q1", category: "常用话术", title: "问候语", content: "您好！很高兴为您服务，请问有什么可以帮您？" },
+  { id: "q2", category: "常用话术", title: "稍等请求", content: "请您稍等片刻，我帮您核实一下相关信息。" },
+  { id: "q3", category: "常用话术", title: "结束语", content: "感谢您的咨询，祝您生活愉快！如有其他问题欢迎随时联系我们。" },
+  { id: "q4", category: "政策说明", title: "7天无理由退换", content: "我们支持7天无理由退换货，商品需保持原包装完好，不影响二次销售。" },
+  { id: "q5", category: "政策说明", title: "物流说明", content: "正常下单后48小时内发货，偏远地区可能延迟1-2天，请您耐心等待。" },
+  { id: "q6", category: "政策说明", title: "保修政策", content: "本产品享受全国联保一年服务，非人为损坏均可免费维修。" },
+  { id: "q7", category: "链接素材", title: "帮助中心", content: "您可以访问我们的帮助中心获取更多信息：https://help.example.com" },
+  { id: "q8", category: "链接素材", title: "订单查询", content: "订单查询入口：https://example.com/orders" },
+  { id: "q9", category: "图片素材", title: "优惠券图", content: "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=400" },
+];
+
+export const stats = {
+  totalSessions: 1286,
+  validSessions: 1102,
+  missedSessions: 24,
+  avgResponseTime: "28s",
+  avgHandleTime: "4分32秒",
+  avgSessionDuration: "8分15秒",
+  satisfaction: 96.8,
+  trend: [
+    { day: "周一", total: 168, valid: 142 },
+    { day: "周二", total: 195, valid: 170 },
+    { day: "周三", total: 210, valid: 188 },
+    { day: "周四", total: 178, valid: 156 },
+    { day: "周五", total: 220, valid: 195 },
+    { day: "周六", total: 158, valid: 140 },
+    { day: "周日", total: 157, valid: 111 },
+  ],
+  channelDist: [
+    { channel: "网站", count: 485 },
+    { channel: "微信", count: 362 },
+    { channel: "APP", count: 258 },
+    { channel: "微博", count: 112 },
+    { channel: "邮箱", count: 69 },
+  ],
+};
+
+export const auditLogs = [
+  { id: "a1", agent: "客服小美", action: "导出聊天记录", target: "会话 S2025003", time: "2025-01-15 14:30", ip: "192.168.1.101" },
+  { id: "a2", agent: "客服小强", action: "导出聊天记录", target: "会话 S2025007", time: "2025-01-15 13:15", ip: "192.168.1.102" },
+  { id: "a3", agent: "客服小美", action: "批量导出", target: "10条记录", time: "2025-01-14 17:50", ip: "192.168.1.101" },
+];
