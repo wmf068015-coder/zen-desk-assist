@@ -173,6 +173,19 @@ const lastMessages = [
 
 const lastTimes = ["刚刚", "2分钟前", "5分钟前", "12分钟前", "30分钟前", "1小时前", "2小时前", "3小时前", "昨天", "昨天"];
 
+const aiSummaries: Record<number, Session["aiSummary"]> = {
+  0: { intent: "咨询产品规格及优惠信息", keyPoints: ["关注续航时间（30小时）", "多设备连接需求", "有购买意向，询问优惠"], sentiment: "positive", suggestedAction: "推荐当前优惠活动并引导下单" },
+  1: { intent: "催促订单发货", keyPoints: ["订单已下单2天未发货", "客户情绪不耐烦", "明确要求转人工"], sentiment: "negative", suggestedAction: "立即查询物流并向客户致歉" },
+  2: { intent: "产品质量投诉", keyPoints: ["包装破损", "产品有划痕", "已提供图片证据"], sentiment: "negative", suggestedAction: "优先安排换货，主动补偿" },
+  3: { intent: "APP 登录故障排查", keyPoints: ["提示服务器错误", "影响正常使用"], sentiment: "negative", suggestedAction: "收集设备信息，转技术团队" },
+  4: { intent: "物流时效咨询", keyPoints: ["关心发货时间"], sentiment: "neutral", suggestedAction: "说明常规发货时效" },
+  5: { intent: "退款进度咨询", keyPoints: ["超过7天未到账", "情绪焦虑"], sentiment: "negative", suggestedAction: "查询退款流水并加急处理" },
+  6: { intent: "支付方式咨询", keyPoints: ["询问是否支持分期"], sentiment: "neutral", suggestedAction: "介绍可用分期方案" },
+  7: { intent: "物流异常反馈", keyPoints: ["物流停滞", "订单号 O20241234"], sentiment: "negative", suggestedAction: "联系物流商核实" },
+  8: { intent: "系统崩溃严重问题", keyPoints: ["完全无法使用", "反复崩溃"], sentiment: "negative", suggestedAction: "上报技术，提供临时方案" },
+  9: { intent: "无效咨询", keyPoints: ["客户长时间无响应"], sentiment: "neutral", suggestedAction: "可结束会话" },
+};
+
 export const sessions: Session[] = Array.from({ length: 10 }, (_, i) => ({
   id: `S${2025000 + i}`,
   customer: makeCustomer(i),
@@ -186,6 +199,9 @@ export const sessions: Session[] = Array.from({ length: 10 }, (_, i) => ({
   transferred: [false, true, true, false, false, false, false, true, true, false][i],
   messages: defaultMessages(i),
   waitingSeconds: allStatuses[i] === "waiting" ? [null, 120, null, null, null, null, null, 340, null, null][i] ?? undefined : undefined,
+  queued: [false, false, false, false, false, false, false, true, false, false][i],
+  queuePosition: i === 7 ? 1 : undefined,
+  aiSummary: aiSummaries[i],
 }));
 
 export const quickReplies = [
