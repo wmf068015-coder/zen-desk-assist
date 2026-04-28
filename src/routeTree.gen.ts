@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as CustomersRouteImport } from './routes/customers'
+import { Route as CapacityRouteImport } from './routes/capacity'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -30,6 +31,11 @@ const CustomersRoute = CustomersRouteImport.update({
   path: '/customers',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CapacityRoute = CapacityRouteImport.update({
+  id: '/capacity',
+  path: '/capacity',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuditRoute = AuditRouteImport.update({
   id: '/audit',
   path: '/audit',
@@ -44,6 +50,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/capacity': typeof CapacityRoute
   '/customers': typeof CustomersRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/capacity': typeof CapacityRoute
   '/customers': typeof CustomersRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
@@ -59,21 +67,36 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/capacity': typeof CapacityRoute
   '/customers': typeof CustomersRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/audit' | '/customers' | '/settings' | '/stats'
+  fullPaths:
+    | '/'
+    | '/audit'
+    | '/capacity'
+    | '/customers'
+    | '/settings'
+    | '/stats'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/audit' | '/customers' | '/settings' | '/stats'
-  id: '__root__' | '/' | '/audit' | '/customers' | '/settings' | '/stats'
+  to: '/' | '/audit' | '/capacity' | '/customers' | '/settings' | '/stats'
+  id:
+    | '__root__'
+    | '/'
+    | '/audit'
+    | '/capacity'
+    | '/customers'
+    | '/settings'
+    | '/stats'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
+  CapacityRoute: typeof CapacityRoute
   CustomersRoute: typeof CustomersRoute
   SettingsRoute: typeof SettingsRoute
   StatsRoute: typeof StatsRoute
@@ -102,6 +125,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CustomersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/capacity': {
+      id: '/capacity'
+      path: '/capacity'
+      fullPath: '/capacity'
+      preLoaderRoute: typeof CapacityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/audit': {
       id: '/audit'
       path: '/audit'
@@ -122,6 +152,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
+  CapacityRoute: CapacityRoute,
   CustomersRoute: CustomersRoute,
   SettingsRoute: SettingsRoute,
   StatsRoute: StatsRoute,
