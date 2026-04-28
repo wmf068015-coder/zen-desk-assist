@@ -235,6 +235,19 @@ function IconBtn({ icon, label }: { icon: React.ReactNode; label: string }) {
 function MessageBubble({ message, highlight }: { message: Message; highlight?: boolean }) {
   const isCustomer = message.sender === "customer";
   const isAi = message.sender === "ai";
+  const isSystem = message.sender === "system";
+
+  if (isSystem) {
+    return (
+      <div className="flex justify-center">
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
+          <ArrowRightLeft className="h-3 w-3" />
+          {message.content}
+          <span className="text-primary/60">· {message.time}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex gap-2", isCustomer ? "justify-start" : "justify-end")}>
