@@ -26,9 +26,29 @@ function Index() {
 
   const takeover = (id: string) => {
     setSessions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: "human" as const, transferred: true, unread: 0 } : s))
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              status: "human" as const,
+              transferred: true,
+              unread: 0,
+              queued: false,
+              messages: [
+                ...s.messages,
+                {
+                  id: `sys${Date.now()}`,
+                  sender: "system" as const,
+                  type: "system" as const,
+                  content: "已转接人工客服，由您继续为客户服务",
+                  time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+                },
+              ],
+            }
+          : s
+      )
     );
-    toast.success("已成功接管会话", { description: "现在由您与客户对话" });
+    toast.success("已成功开始接待", { description: "会话已转接人工客服" });
   };
 
   const end = (id: string) => {
