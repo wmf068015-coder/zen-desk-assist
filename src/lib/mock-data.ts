@@ -242,6 +242,9 @@ export const stats = {
   ],
 };
 
+export type KnowledgeStatus = "approved" | "pending" | "rejected";
+export type KnowledgeSource = "manual" | "session";
+
 export interface KnowledgeArticle {
   id: string;
   category: string;
@@ -251,6 +254,18 @@ export interface KnowledgeArticle {
   tags: string[];
   updatedAt: string;
   views: number;
+  status: KnowledgeStatus;
+  source: KnowledgeSource;
+  sourceSessionId?: string;
+  submittedBy: string;
+  submittedAt: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectReason?: string;
+  /** 0-100 置信度，AI 使用次数越高越高 */
+  confidence: number;
+  /** AI 引用次数 */
+  useCount: number;
 }
 
 export const knowledgeBase: KnowledgeArticle[] = [
@@ -263,6 +278,14 @@ export const knowledgeBase: KnowledgeArticle[] = [
     tags: ["产品", "规格", "耳机"],
     updatedAt: "2025-01-10",
     views: 1284,
+    status: "approved",
+    source: "manual",
+    submittedBy: "运营 Anna",
+    submittedAt: "2024-12-20",
+    reviewedBy: "管理员 Lee",
+    reviewedAt: "2024-12-21",
+    confidence: 96,
+    useCount: 482,
   },
   {
     id: "kb2",
@@ -273,6 +296,14 @@ export const knowledgeBase: KnowledgeArticle[] = [
     tags: ["退货", "政策"],
     updatedAt: "2025-01-08",
     views: 956,
+    status: "approved",
+    source: "manual",
+    submittedBy: "运营 Anna",
+    submittedAt: "2024-12-15",
+    reviewedBy: "管理员 Lee",
+    reviewedAt: "2024-12-16",
+    confidence: 92,
+    useCount: 356,
   },
   {
     id: "kb3",
@@ -283,6 +314,14 @@ export const knowledgeBase: KnowledgeArticle[] = [
     tags: ["物流", "发货"],
     updatedAt: "2025-01-12",
     views: 730,
+    status: "approved",
+    source: "manual",
+    submittedBy: "运营 Anna",
+    submittedAt: "2024-12-10",
+    reviewedBy: "管理员 Lee",
+    reviewedAt: "2024-12-11",
+    confidence: 88,
+    useCount: 274,
   },
   {
     id: "kb4",
@@ -293,6 +332,15 @@ export const knowledgeBase: KnowledgeArticle[] = [
     tags: ["保修", "售后"],
     updatedAt: "2025-01-05",
     views: 612,
+    status: "approved",
+    source: "session",
+    sourceSessionId: "S2025002",
+    submittedBy: "客服小美",
+    submittedAt: "2024-12-28",
+    reviewedBy: "管理员 Lee",
+    reviewedAt: "2024-12-29",
+    confidence: 74,
+    useCount: 158,
   },
   {
     id: "kb5",
@@ -303,6 +351,14 @@ export const knowledgeBase: KnowledgeArticle[] = [
     tags: ["投诉", "话术"],
     updatedAt: "2025-01-14",
     views: 489,
+    status: "approved",
+    source: "manual",
+    submittedBy: "运营 Anna",
+    submittedAt: "2025-01-02",
+    reviewedBy: "管理员 Lee",
+    reviewedAt: "2025-01-03",
+    confidence: 81,
+    useCount: 196,
   },
   {
     id: "kb6",
@@ -313,6 +369,48 @@ export const knowledgeBase: KnowledgeArticle[] = [
     tags: ["APP", "故障"],
     updatedAt: "2025-01-13",
     views: 421,
+    status: "approved",
+    source: "session",
+    sourceSessionId: "S2025008",
+    submittedBy: "客服小强",
+    submittedAt: "2025-01-04",
+    reviewedBy: "管理员 Lee",
+    reviewedAt: "2025-01-05",
+    confidence: 68,
+    useCount: 112,
+  },
+  {
+    id: "kb7",
+    category: "退换货政策",
+    title: "跨境订单退货特殊说明",
+    summary: "跨境订单退货需自行承担国际运费，时效 15-30 天。",
+    content: "跨境订单签收后 7 天内可申请退货，但国际运费由客户自行承担；商品需寄回至我司香港中转仓，到仓后 15-30 个工作日完成退款。",
+    tags: ["退货", "跨境"],
+    updatedAt: "2025-01-15",
+    views: 12,
+    status: "pending",
+    source: "session",
+    sourceSessionId: "S2025001",
+    submittedBy: "客服小美",
+    submittedAt: "2025-01-15 11:20",
+    confidence: 30,
+    useCount: 0,
+  },
+  {
+    id: "kb8",
+    category: "产品手册",
+    title: "智能手表 S2 心率监测精度",
+    summary: "S2 心率精度 ±3bpm，支持 24h 连续监测和异常预警。",
+    content: "智能手表 S2 搭载第二代光学心率传感器，静息心率精度 ±3bpm，运动状态 ±5bpm。支持 24 小时连续监测、异常心率预警以及房颤筛查。",
+    tags: ["手表", "心率"],
+    updatedAt: "2025-01-15",
+    views: 5,
+    status: "pending",
+    source: "manual",
+    submittedBy: "客服小强",
+    submittedAt: "2025-01-15 09:40",
+    confidence: 25,
+    useCount: 0,
   },
 ];
 

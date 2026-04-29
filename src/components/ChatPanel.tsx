@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import type { Session, Message } from "@/lib/mock-data";
 import { quickReplies } from "@/lib/mock-data";
+import { knowledgeStore } from "@/lib/knowledge-store";
 import { StatusBadge, TagBadge, ChannelIcon } from "./StatusBadge";
-import { Bot, User, Paperclip, Image as ImageIcon, Send, Zap, UserCheck, XCircle, Download, MoreVertical, FileText, Sparkles, ArrowRightLeft, BookOpen } from "lucide-react";
+import { Bot, User, Paperclip, Image as ImageIcon, Send, Zap, UserCheck, XCircle, Download, MoreVertical, FileText, Sparkles, ArrowRightLeft, BookOpen, BookPlus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -80,14 +82,43 @@ export function ChatPanel({ session, onTakeover, onEnd, onSendMessage, onExport 
             </button>
           )}
           {session.status === "human" && (
-            <Link
-              to="/knowledge"
-              search={{ sessionId: session.id, q: undefined }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
-              title="进入知识库"
-            >
-              <BookOpen className="h-3.5 w-3.5" />知识库
-            </Link>
+            <>
+              <Link
+                to="/knowledge"
+                search={{ sessionId: session.id, q: undefined }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
+                title="进入知识库"
+              >
+                <BookOpen className="h-3.5 w-3.5" />知识库
+              </Link>
+              <button
+                onClick={() => {
+                  const title = window.prompt("知识标题", session.aiSummary?.intent ?? `来自会话 ${session.id}`);
+                  if (!title) return;
+                  const content = window.prompt(
+                    "知识正文（可粘贴整理后的解决方案）",
+                    session.messages.filter((m) => m.type === "text").map((m) => `[${m.senderName ?? m.sender}] ${m.content}`).join("\n"),
+                  );
+                  if (!content) return;
+                  knowledgeStore.add({
+                    title: title.slice(0, 120),
+                    category: "会话沉淀",
+                    summary: content.slice(0, 80),
+                    content: content.slice(0, 5000),
+                    tags: session.tags,
+                    source: "session",
+                    sourceSessionId: session.id,
+                    submittedBy: "客服小美",
+                    status: "pending",
+                  });
+                  toast.success("已提交审核", { description: "等待后台管理员审核通过后将进入知识库" });
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/5 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/10"
+                title="将本次会话沉淀为知识"
+              >
+                <BookPlus className="h-3.5 w-3.5" />添加到知识库
+              </button>
+            </>
           )}
           {session.status !== "human" && canInput && (
             <button
