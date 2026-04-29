@@ -242,6 +242,9 @@ export const stats = {
   ],
 };
 
+export type KnowledgeStatus = "approved" | "pending" | "rejected";
+export type KnowledgeSource = "manual" | "session";
+
 export interface KnowledgeArticle {
   id: string;
   category: string;
@@ -251,6 +254,18 @@ export interface KnowledgeArticle {
   tags: string[];
   updatedAt: string;
   views: number;
+  status: KnowledgeStatus;
+  source: KnowledgeSource;
+  sourceSessionId?: string;
+  submittedBy: string;
+  submittedAt: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectReason?: string;
+  /** 0-100 置信度，AI 使用次数越高越高 */
+  confidence: number;
+  /** AI 引用次数 */
+  useCount: number;
 }
 
 export const knowledgeBase: KnowledgeArticle[] = [
@@ -263,6 +278,14 @@ export const knowledgeBase: KnowledgeArticle[] = [
     tags: ["产品", "规格", "耳机"],
     updatedAt: "2025-01-10",
     views: 1284,
+    status: "approved",
+    source: "manual",
+    submittedBy: "运营 Anna",
+    submittedAt: "2024-12-20",
+    reviewedBy: "管理员 Lee",
+    reviewedAt: "2024-12-21",
+    confidence: 96,
+    useCount: 482,
   },
   {
     id: "kb2",
