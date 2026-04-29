@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import type { Session, Message } from "@/lib/mock-data";
 import { quickReplies } from "@/lib/mock-data";
 import { StatusBadge, TagBadge, ChannelIcon } from "./StatusBadge";
-import { Bot, User, Paperclip, Image as ImageIcon, Send, Zap, UserCheck, XCircle, Download, MoreVertical, FileText, Sparkles, ArrowRightLeft } from "lucide-react";
+import { Bot, User, Paperclip, Image as ImageIcon, Send, Zap, UserCheck, XCircle, Download, MoreVertical, FileText, Sparkles, ArrowRightLeft, BookOpen } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -77,6 +78,16 @@ export function ChatPanel({ session, onTakeover, onEnd, onSendMessage, onExport 
             >
               <Sparkles className="h-3.5 w-3.5" />AI 摘要
             </button>
+          )}
+          {session.status === "human" && (
+            <Link
+              to="/knowledge"
+              search={{ sessionId: session.id, q: undefined }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
+              title="进入知识库"
+            >
+              <BookOpen className="h-3.5 w-3.5" />知识库
+            </Link>
           )}
           {session.status !== "human" && canInput && (
             <button

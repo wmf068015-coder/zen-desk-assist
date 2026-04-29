@@ -242,6 +242,80 @@ export const stats = {
   ],
 };
 
+export interface KnowledgeArticle {
+  id: string;
+  category: string;
+  title: string;
+  summary: string;
+  content: string;
+  tags: string[];
+  updatedAt: string;
+  views: number;
+}
+
+export const knowledgeBase: KnowledgeArticle[] = [
+  {
+    id: "kb1",
+    category: "产品手册",
+    title: "无线降噪耳机 Pro 完整规格",
+    summary: "续航 30 小时、双设备连接、主动降噪 35dB、IPX4 防水等核心参数与使用说明。",
+    content: "无线降噪耳机 Pro 采用第三代主动降噪芯片，续航 30 小时（开降噪 24h），支持蓝牙 5.3 多点连接，可同时连接手机与电脑。IPX4 级防水，支持 Type-C 快充，10 分钟充电可使用 3 小时。",
+    tags: ["产品", "规格", "耳机"],
+    updatedAt: "2025-01-10",
+    views: 1284,
+  },
+  {
+    id: "kb2",
+    category: "退换货政策",
+    title: "7天无理由退换流程",
+    summary: "签收后 7 天内可申请无理由退换，需保持包装完好不影响二次销售。",
+    content: "1. 登录账户进入「我的订单」→ 选择对应订单 → 点击「申请退货」\n2. 填写退货原因并上传商品照片\n3. 客服 24 小时内审核，审核通过后可寄回商品\n4. 仓库收到验收无误后 3-5 个工作日内退款原路返回",
+    tags: ["退货", "政策"],
+    updatedAt: "2025-01-08",
+    views: 956,
+  },
+  {
+    id: "kb3",
+    category: "物流配送",
+    title: "发货时效与物流查询",
+    summary: "正常订单 48 小时内发货，偏远地区延迟 1-2 天；支持多快递追踪。",
+    content: "默认采用顺丰/京东物流。下单后 48 小时内发货，节假日及大促期间可能延迟。订单发货后会推送物流单号，可在订单详情页或快递官方网站查询。",
+    tags: ["物流", "发货"],
+    updatedAt: "2025-01-12",
+    views: 730,
+  },
+  {
+    id: "kb4",
+    category: "售后服务",
+    title: "保修范围与维修流程",
+    summary: "全国联保一年，非人为损坏免费维修；人为损坏可付费维修。",
+    content: "自购买之日起一年内，因产品本身质量问题导致的故障，凭购买凭证可享受免费维修。人为损坏（如摔落、进水超过防水等级）需收取材料费与人工费。",
+    tags: ["保修", "售后"],
+    updatedAt: "2025-01-05",
+    views: 612,
+  },
+  {
+    id: "kb5",
+    category: "投诉处理",
+    title: "客户投诉应对话术与升级流程",
+    summary: "倾听 → 共情 → 致歉 → 解决方案 → 跟进；严重投诉转主管处理。",
+    content: "处理投诉时优先安抚客户情绪，主动承担责任，给出明确解决时限。涉及金额 ≥ 500 元或情绪激烈的投诉需在 30 分钟内升级到主管处理。",
+    tags: ["投诉", "话术"],
+    updatedAt: "2025-01-14",
+    views: 489,
+  },
+  {
+    id: "kb6",
+    category: "技术支持",
+    title: "APP 登录异常排查",
+    summary: "服务器错误、网络异常、版本过旧等常见原因与解决步骤。",
+    content: "1. 确认网络连接正常\n2. 退出账号重新登录\n3. 检查 APP 版本，更新到最新\n4. 清除 APP 缓存或重装\n5. 仍无法解决的，收集错误截图与设备信息提交技术团队",
+    tags: ["APP", "故障"],
+    updatedAt: "2025-01-13",
+    views: 421,
+  },
+];
+
 export const auditLogs = [
   { id: "a1", agent: "客服小美", action: "导出聊天记录", target: "会话 S2025003", time: "2025-01-15 14:30", ip: "192.168.1.101" },
   { id: "a2", agent: "客服小强", action: "导出聊天记录", target: "会话 S2025007", time: "2025-01-15 13:15", ip: "192.168.1.102" },
