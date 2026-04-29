@@ -1,10 +1,11 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { MessageSquare, BarChart3, Users, Settings, Headphones, FileText, Bell, Gauge } from "lucide-react";
+import { MessageSquare, BarChart3, Users, Settings, Headphones, FileText, Bell, Gauge, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { to: "/", label: "工作台", icon: MessageSquare },
   { to: "/capacity", label: "接待配置", icon: Gauge },
+  { to: "/knowledge", label: "知识库", icon: BookOpen },
   { to: "/stats", label: "接待统计", icon: BarChart3 },
   { to: "/customers", label: "客户管理", icon: Users },
   { to: "/audit", label: "审计日志", icon: FileText },

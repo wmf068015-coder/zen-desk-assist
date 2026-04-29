@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as KnowledgeRouteImport } from './routes/knowledge'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as CapacityRouteImport } from './routes/capacity'
 import { Route as AuditRouteImport } from './routes/audit'
@@ -24,6 +25,11 @@ const StatsRoute = StatsRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KnowledgeRoute = KnowledgeRouteImport.update({
+  id: '/knowledge',
+  path: '/knowledge',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CustomersRoute = CustomersRouteImport.update({
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuditRoute
   '/capacity': typeof CapacityRoute
   '/customers': typeof CustomersRoute
+  '/knowledge': typeof KnowledgeRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/audit': typeof AuditRoute
   '/capacity': typeof CapacityRoute
   '/customers': typeof CustomersRoute
+  '/knowledge': typeof KnowledgeRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
 }
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/audit': typeof AuditRoute
   '/capacity': typeof CapacityRoute
   '/customers': typeof CustomersRoute
+  '/knowledge': typeof KnowledgeRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
 }
@@ -79,16 +88,25 @@ export interface FileRouteTypes {
     | '/audit'
     | '/capacity'
     | '/customers'
+    | '/knowledge'
     | '/settings'
     | '/stats'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/audit' | '/capacity' | '/customers' | '/settings' | '/stats'
+  to:
+    | '/'
+    | '/audit'
+    | '/capacity'
+    | '/customers'
+    | '/knowledge'
+    | '/settings'
+    | '/stats'
   id:
     | '__root__'
     | '/'
     | '/audit'
     | '/capacity'
     | '/customers'
+    | '/knowledge'
     | '/settings'
     | '/stats'
   fileRoutesById: FileRoutesById
@@ -98,6 +116,7 @@ export interface RootRouteChildren {
   AuditRoute: typeof AuditRoute
   CapacityRoute: typeof CapacityRoute
   CustomersRoute: typeof CustomersRoute
+  KnowledgeRoute: typeof KnowledgeRoute
   SettingsRoute: typeof SettingsRoute
   StatsRoute: typeof StatsRoute
 }
@@ -116,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/knowledge': {
+      id: '/knowledge'
+      path: '/knowledge'
+      fullPath: '/knowledge'
+      preLoaderRoute: typeof KnowledgeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/customers': {
@@ -154,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuditRoute: AuditRoute,
   CapacityRoute: CapacityRoute,
   CustomersRoute: CustomersRoute,
+  KnowledgeRoute: KnowledgeRoute,
   SettingsRoute: SettingsRoute,
   StatsRoute: StatsRoute,
 }
