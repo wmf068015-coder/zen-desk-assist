@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import type { Session, Message } from "@/lib/mock-data";
 import { quickReplies } from "@/lib/mock-data";
+import { knowledgeStore } from "@/lib/knowledge-store";
 import { StatusBadge, TagBadge, ChannelIcon } from "./StatusBadge";
-import { Bot, User, Paperclip, Image as ImageIcon, Send, Zap, UserCheck, XCircle, Download, MoreVertical, FileText, Sparkles, ArrowRightLeft, BookOpen } from "lucide-react";
+import { Bot, User, Paperclip, Image as ImageIcon, Send, Zap, UserCheck, XCircle, Download, MoreVertical, FileText, Sparkles, ArrowRightLeft, BookOpen, BookPlus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface Props {
