@@ -82,7 +82,7 @@ export function ChatPanel({ session, onTakeover, onEnd, onSendMessage, onExport 
           {session.status === "human" && (
             <Link
               to="/knowledge"
-              search={{ sessionId: session.id }}
+              search={{ sessionId: session.id, q: undefined }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
               title="进入知识库"
             >

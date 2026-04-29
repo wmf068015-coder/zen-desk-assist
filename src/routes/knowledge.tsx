@@ -9,8 +9,8 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/knowledge")({
   validateSearch: (s: Record<string, unknown>) => ({
-    sessionId: typeof s.sessionId === "string" ? s.sessionId : undefined,
-    q: typeof s.q === "string" ? s.q : undefined,
+    sessionId: typeof s.sessionId === "string" ? s.sessionId : undefined as string | undefined,
+    q: typeof s.q === "string" ? s.q : undefined as string | undefined,
   }),
   head: () => ({
     meta: [
