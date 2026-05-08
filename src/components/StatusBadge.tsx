@@ -1,19 +1,59 @@
 import { cn } from "@/lib/utils";
 import type { SessionStatus, SessionTag, Channel } from "@/lib/mock-data";
 import { STATUS_LABELS, TAG_LABELS, CHANNEL_LABELS } from "@/lib/mock-data";
-import { Bot, Clock, User, CheckCircle2, AlertTriangle, Globe, MessageCircle, Smartphone, Mail, Hash } from "lucide-react";
+import {
+  Bot,
+  Clock,
+  User,
+  PauseCircle,
+  CheckCircle2,
+  AlertTriangle,
+  Globe,
+  MessageCircle,
+  Smartphone,
+  Mail,
+  Hash,
+} from "lucide-react";
 
 export function StatusBadge({ status, className }: { status: SessionStatus; className?: string }) {
   const config: Record<SessionStatus, { bg: string; text: string; icon: React.ReactNode }> = {
     ai: { bg: "bg-status-ai/10", text: "text-status-ai", icon: <Bot className="h-3 w-3" /> },
-    waiting: { bg: "bg-status-waiting/15", text: "text-status-waiting", icon: <Clock className="h-3 w-3" /> },
-    human: { bg: "bg-status-human/15", text: "text-status-human", icon: <User className="h-3 w-3" /> },
-    ended: { bg: "bg-status-ended/15", text: "text-status-ended", icon: <CheckCircle2 className="h-3 w-3" /> },
-    timeout: { bg: "bg-status-timeout/15", text: "text-status-timeout", icon: <AlertTriangle className="h-3 w-3" /> },
+    waiting: {
+      bg: "bg-status-waiting/15",
+      text: "text-status-waiting",
+      icon: <Clock className="h-3 w-3" />,
+    },
+    human: {
+      bg: "bg-status-human/15",
+      text: "text-status-human",
+      icon: <User className="h-3 w-3" />,
+    },
+    suspended: {
+      bg: "bg-warning/15",
+      text: "text-warning-foreground",
+      icon: <PauseCircle className="h-3 w-3" />,
+    },
+    ended: {
+      bg: "bg-status-ended/15",
+      text: "text-status-ended",
+      icon: <CheckCircle2 className="h-3 w-3" />,
+    },
+    timeout: {
+      bg: "bg-status-timeout/15",
+      text: "text-status-timeout",
+      icon: <AlertTriangle className="h-3 w-3" />,
+    },
   };
   const c = config[status];
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", c.bg, c.text, className)}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+        c.bg,
+        c.text,
+        className,
+      )}
+    >
       {c.icon}
       {STATUS_LABELS[status]}
     </span>
@@ -30,7 +70,12 @@ export function TagBadge({ tag }: { tag: SessionTag }) {
     invalid: "bg-muted text-muted-foreground",
   };
   return (
-    <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium", colors[tag])}>
+    <span
+      className={cn(
+        "inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium",
+        colors[tag],
+      )}
+    >
       {TAG_LABELS[tag]}
     </span>
   );
