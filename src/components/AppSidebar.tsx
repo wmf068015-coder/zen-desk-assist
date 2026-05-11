@@ -8,11 +8,13 @@ import {
   Bell,
   Gauge,
   BookOpen,
+  Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { to: "/", label: "工作台", icon: MessageSquare },
+  { to: "/tickets", label: "工单", icon: Inbox },
   { to: "/capacity", label: "接待配置", icon: Gauge },
   { to: "/knowledge", label: "知识库", icon: BookOpen },
   { to: "/stats", label: "接待统计", icon: BarChart3 },
