@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { type Session, type SessionStatus, CHANNEL_LABELS, TAG_LABELS } from "@/lib/mock-data";
+import { type Message, type Session, type SessionStatus, CHANNEL_LABELS, TAG_LABELS } from "@/lib/mock-data";
 import { StatusBadge, TagBadge, ChannelIcon } from "./StatusBadge";
 import { cn } from "@/lib/utils";
 import { Search, Filter, ArrowRightLeft } from "lucide-react";
@@ -23,6 +23,17 @@ const statusFilters: { value: SessionStatus | "all" | "unread"; label: string }[
   { value: "timeout", label: "已超时" },
 ];
 
+function getMessagePreview(message: Message) {
+  if (message.type === "image") return "[图片]";
+  if (message.type === "file") return message.fileName ? `[文件] ${message.fileName}` : "[文件]";
+  return message.content;
+}
+
+function getSessionLastMessage(session: Session) {
+  const lastMessage = [...session.messages].reverse().find((message) => message.sender !== "system");
+  return lastMessage ? getMessagePreview(lastMessage) : session.lastMessage;
+}
+
 export function SessionList({
   sessions,
   activeId,
@@ -39,12 +50,13 @@ export function SessionList({
 
   const filtered = useMemo(() => {
     return sessions.filter((s) => {
+      const lastMessage = getSessionLastMessage(s);
       if (filter === "unread" && s.unread === 0) return false;
       if (filter !== "all" && filter !== "unread" && s.status !== filter) return false;
       if (channelFilter !== "all" && s.channel !== channelFilter) return false;
       if (tagFilter !== "all" && !s.tags.includes(tagFilter as never)) return false;
       if (transferredOnly && !s.transferred) return false;
-      if (query && !s.customer.name.includes(query) && !s.lastMessage.includes(query)) return false;
+      if (query && !s.customer.name.includes(query) && !lastMessage.includes(query)) return false;
       return true;
     });
   }, [sessions, filter, query, channelFilter, tagFilter, transferredOnly]);
@@ -181,6 +193,8 @@ function SessionItem({
   active: boolean;
   onClick: () => void;
 }) {
+  const lastMessage = getSessionLastMessage(session);
+
   return (
     <button
       onClick={onClick}
@@ -213,7 +227,7 @@ function SessionItem({
             </span>
           )}
         </div>
-        <p className="mt-1 truncate text-xs text-muted-foreground">{session.lastMessage}</p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">{lastMessage}</p>
         <div className="mt-1.5 flex items-center justify-between">
           <div className="flex gap-1">
             {session.tags.slice(0, 2).map((t) => (

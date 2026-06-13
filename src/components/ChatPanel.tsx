@@ -25,6 +25,7 @@ import {
   Pencil,
   PauseCircle,
   PlayCircle,
+  ChevronDown,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -56,7 +57,7 @@ export function ChatPanel({
   const [input, setInput] = useState("");
   const [showQuick, setShowQuick] = useState(false);
   const [showAiHistory, setShowAiHistory] = useState(false);
-  const [showSummary, setShowSummary] = useState(true);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [actionMessageId, setActionMessageId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
@@ -70,6 +71,7 @@ export function ChatPanel({
     setActionMessageId(null);
     setSelectionMode(false);
     setSelectedMessageIds([]);
+    setSummaryExpanded(false);
   }, [session.id]);
 
   const send = () => {
@@ -147,7 +149,7 @@ export function ChatPanel({
       toast.warning("请先长按消息选择聊天记录");
       return;
     }
-    const title = window.prompt("知识标题", session.aiSummary?.intent ?? `来自会话 ${session.id}`);
+    const title = window.prompt("知识标题", session.aiSummary?.l3_intent ?? `来自会话 ${session.id}`);
     if (!title) return;
     const content = window.prompt(
       "知识正文（已带入选中的聊天记录，可继续整理）",
@@ -226,10 +228,10 @@ export function ChatPanel({
           </button>
           {session.aiSummary && (
             <button
-              onClick={() => setShowSummary((v) => !v)}
+              onClick={() => setSummaryExpanded((v) => !v)}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                showSummary ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
+                summaryExpanded ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
               )}
             >
               <Sparkles className="h-3.5 w-3.5" />
@@ -307,52 +309,88 @@ export function ChatPanel({
       </div>
 
       {/* AI Summary */}
-      {showSummary && session.aiSummary && (
-        <div className="border-b bg-gradient-to-r from-primary/5 via-status-ai/5 to-transparent px-6 py-3">
+      {session.aiSummary && (
+        <div className="border-b bg-gradient-to-r from-primary/5 via-status-ai/5 to-transparent px-6 py-2">
           <div className="mx-auto max-w-3xl">
-            <div className="flex items-start gap-3 rounded-xl border border-status-ai/20 bg-card/70 p-3 shadow-sm backdrop-blur">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-status-ai/15">
-                <Sparkles className="h-4 w-4 text-status-ai" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold">AI 摘要总结</span>
-                  <span
-                    className={cn(
-                      "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                      session.aiSummary.sentiment === "positive" && "bg-success/15 text-success",
-                      session.aiSummary.sentiment === "negative" &&
-                        "bg-destructive/15 text-destructive",
-                      session.aiSummary.sentiment === "neutral" && "bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {session.aiSummary.sentiment === "positive"
-                      ? "积极"
-                      : session.aiSummary.sentiment === "negative"
-                        ? "负面"
-                        : "中性"}
-                  </span>
-                </div>
-                <p className="mt-1 text-sm font-medium">{session.aiSummary.intent}</p>
-                <ul className="mt-1.5 space-y-0.5">
-                  {session.aiSummary.keyPoints.map((k, i) => (
-                    <li key={i} className="text-xs text-muted-foreground">
-                      • {k}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-2 rounded-md bg-primary/5 px-2 py-1 text-xs text-primary">
-                  <b>建议：</b>
-                  {session.aiSummary.suggestedAction}
-                </p>
-              </div>
+            <div className="rounded-lg border border-status-ai/20 bg-card/80 shadow-sm backdrop-blur">
               <button
-                onClick={() => setShowSummary(false)}
-                className="text-muted-foreground hover:text-foreground"
-                title="收起"
+                type="button"
+                onClick={() => setSummaryExpanded((v) => !v)}
+                className="flex w-full items-center gap-3 px-3 py-2 text-left"
               >
-                <XCircle className="h-4 w-4" />
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-status-ai/15">
+                  <Sparkles className="h-3.5 w-3.5 text-status-ai" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold">转人工摘要</span>
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                        session.aiSummary.risk_level === "high" && "bg-destructive/15 text-destructive",
+                        session.aiSummary.risk_level === "medium" && "bg-warning/15 text-warning-foreground",
+                        session.aiSummary.risk_level === "low" && "bg-success/15 text-success",
+                      )}
+                    >
+                      风险：{getRiskLabel(session.aiSummary.risk_level)}
+                    </span>
+                    <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                      {translateSuggestedTeam(session.aiSummary.suggested_team)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {session.aiSummary.l3_intent} · {session.aiSummary.user_need}
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                  {summaryExpanded ? "收起" : "展开"}
+                </span>
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                    summaryExpanded && "rotate-180",
+                  )}
+                />
               </button>
+
+              {summaryExpanded && (
+                <div className="border-t px-3 pb-3 pt-2">
+                  <div className="grid gap-2 text-xs md:grid-cols-2">
+                    <SummaryField label="转人工原因" value={translateHandoffReason(session.aiSummary.handoff_reason)} />
+                    <SummaryField
+                      label="意图路径"
+                      value={`${session.aiSummary.l1_intent} / ${session.aiSummary.l2_intent} / ${session.aiSummary.l3_intent}`}
+                    />
+                  </div>
+                  <SummaryField className="mt-2" label="用户诉求" value={session.aiSummary.user_need} />
+                  <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
+                    <div className="rounded-md bg-muted/50 px-2 py-1.5">
+                      <p className="font-medium text-foreground">已收集信息</p>
+                      <div className="mt-1 space-y-0.5 text-muted-foreground">
+                        {Object.entries(session.aiSummary.collected_slots).map(([key, value]) => (
+                          <p key={key}>
+                            <span className="text-foreground">{translateSlotLabel(key)}</span>
+                            ：{translateSlotValue(value)}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-md bg-muted/50 px-2 py-1.5">
+                      <p className="font-medium text-foreground">缺失信息</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {session.aiSummary.missing_slots.map((slot) => (
+                          <span
+                            key={slot}
+                            className="rounded bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                          >
+                            {translateSlotLabel(slot)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -509,6 +547,118 @@ function IconBtn({ icon, label }: { icon: React.ReactNode; label: string }) {
       {icon}
     </button>
   );
+}
+
+function SummaryField({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn("rounded-md bg-muted/50 px-2 py-1.5 text-xs", className)}>
+      <p className="font-medium text-foreground">{label}</p>
+      <p className="mt-0.5 text-muted-foreground">{value}</p>
+    </div>
+  );
+}
+
+function getRiskLabel(risk: "low" | "medium" | "high") {
+  return risk === "high" ? "高" : risk === "medium" ? "中" : "低";
+}
+
+function translateHandoffReason(reason: string) {
+  const map: Record<string, string> = {
+    purchase_consultation_handoff: "售前咨询需要人工接续",
+    shipping_delay_request: "发货延迟需要人工查询",
+    damaged_item_complaint: "商品破损投诉需要人工处理",
+    app_login_error: "APP 登录异常需要人工排查",
+    shipping_timeline_question: "发货时效需要人工确认",
+    refund_status_overdue: "退款超时需要人工核查",
+    installment_payment_question: "分期付款方案需要人工确认",
+    logistics_stalled: "物流停滞需要人工跟进",
+    critical_app_crash: "严重系统崩溃需要技术介入",
+    no_customer_response: "用户长时间无响应",
+  };
+  return map[reason] ?? prettifyCode(reason);
+}
+
+function translateSuggestedTeam(team: string) {
+  const map: Record<string, string> = {
+    sales_support: "售前支持",
+    order_support: "订单支持",
+    after_sales: "售后支持",
+    technical_support: "技术支持",
+    logistics_support: "物流支持",
+    general_support: "通用客服",
+  };
+  return map[team] ?? prettifyCode(team);
+}
+
+function translateSlotLabel(slot: string) {
+  const map: Record<string, string> = {
+    app_version: "APP 版本",
+    battery_life: "续航信息",
+    channel: "来源渠道",
+    damage_description: "破损描述",
+    delay_duration: "延迟时长",
+    device_model: "设备型号",
+    email: "邮箱",
+    error_logs: "错误日志",
+    error_message: "错误提示",
+    evidence_status: "凭证状态",
+    handoff_requested: "转人工诉求",
+    issue_type: "问题类型",
+    last_response_status: "最后响应状态",
+    logistics_status: "物流状态",
+    multi_device: "多设备连接",
+    order_amount: "订单金额",
+    order_id: "订单号",
+    os_version: "系统版本",
+    payment_question: "支付问题",
+    platform: "使用平台",
+    preferred_resolution: "期望处理方式",
+    product_model: "产品型号",
+    purchase_intent: "购买意向",
+    question_topic: "咨询主题",
+    refund_delay: "退款延迟",
+    refund_request_id: "退款申请编号",
+    screenshot: "截图",
+    severity: "严重程度",
+    shipping_region: "收货地区",
+    target_price: "期望价格",
+    tracking_number: "物流单号",
+    user_question: "用户问题",
+  };
+  return map[slot] ?? prettifyCode(slot);
+}
+
+function translateSlotValue(value: string) {
+  const map: Record<string, string> = {
+    "2_days": "2 天",
+    app: "APP",
+    app_crash: "APP 崩溃",
+    cannot_use: "无法使用",
+    collected: "已收集",
+    image_uploaded: "已上传图片",
+    installment: "分期付款",
+    login_failed: "登录失败",
+    no_response: "未响应",
+    over_7_days: "超过 7 天",
+    replacement: "换货",
+    shipping_timeline: "发货时效",
+    stalled: "物流停滞",
+    supports_two_devices: "支持两台设备连接",
+    web: "网站",
+  };
+  return map[value] ?? prettifyCode(value);
+}
+
+function prettifyCode(value: string) {
+  return value.replace(/_/g, " ");
 }
 
 function formatKnowledgeMessage(message: Message) {

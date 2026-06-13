@@ -1,6 +1,6 @@
 import type { Customer } from "@/lib/mock-data";
 import { CHANNEL_LABELS } from "@/lib/mock-data";
-import { Phone, Mail, Globe, Crown, Package, History, Star } from "lucide-react";
+import { Mail, Globe, Crown, Package, MapPin } from "lucide-react";
 
 export function CustomerPanel({ customer }: { customer: Customer }) {
   return (
@@ -24,10 +24,9 @@ export function CustomerPanel({ customer }: { customer: Customer }) {
       </div>
 
       <Section title="联系信息">
-        <InfoRow icon={<Phone className="h-3.5 w-3.5" />} label="电话" value={customer.phone} />
         <InfoRow icon={<Mail className="h-3.5 w-3.5" />} label="邮箱" value={customer.email} />
         <InfoRow icon={<Globe className="h-3.5 w-3.5" />} label="渠道" value={CHANNEL_LABELS[customer.channel]} />
-        <InfoRow label="注册日期" value={customer.registerDate} />
+        <InfoRow icon={<MapPin className="h-3.5 w-3.5" />} label="地区" value={customer.region} />
       </Section>
 
       <Section title="当前浏览">
@@ -57,24 +56,6 @@ export function CustomerPanel({ customer }: { customer: Customer }) {
         </div>
       </Section>
 
-      <Section title="历史会话" icon={<History className="h-3.5 w-3.5" />} count={customer.historySessions.length}>
-        <div className="space-y-2">
-          {customer.historySessions.map((h) => (
-            <div key={h.id} className="rounded-lg border bg-card p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">{h.topic}</p>
-                {h.rating && (
-                  <div className="flex items-center gap-0.5 text-warning">
-                    <Star className="h-3 w-3 fill-current" />
-                    <span className="text-xs">{h.rating}</span>
-                  </div>
-                )}
-              </div>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">{h.date} · {h.id}</p>
-            </div>
-          ))}
-        </div>
-      </Section>
     </aside>
   );
 }

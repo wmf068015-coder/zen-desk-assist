@@ -333,7 +333,7 @@ function KnowledgePage() {
       {showNew && (
         <NewKnowledgeDialog
           onClose={() => setShowNew(false)}
-          presetSession={session ? { id: session.id, title: session.aiSummary?.intent ?? session.lastMessage, content: session.messages.map((m) => `[${m.senderName ?? m.sender}] ${m.content}`).join("\n") } : undefined}
+          presetSession={session ? { id: session.id, title: session.aiSummary?.l3_intent ?? session.lastMessage, content: session.messages.map((m) => `[${m.senderName ?? m.sender}] ${m.content}`).join("\n") } : undefined}
           existingCategories={cats.filter((c) => c !== "全部")}
         />
       )}

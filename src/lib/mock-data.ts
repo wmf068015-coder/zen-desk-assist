@@ -22,6 +22,7 @@ export interface Customer {
   phone: string;
   email: string;
   channel: Channel;
+  region: string;
   currentPage: string;
   vipLevel?: string;
   registerDate: string;
@@ -45,10 +46,15 @@ export interface Session {
   queued?: boolean;
   queuePosition?: number;
   aiSummary?: {
-    intent: string;
-    keyPoints: string[];
-    sentiment: "positive" | "neutral" | "negative";
-    suggestedAction: string;
+    handoff_reason: string;
+    l1_intent: string;
+    l2_intent: string;
+    l3_intent: string;
+    user_need: string;
+    collected_slots: Record<string, string>;
+    missing_slots: string[];
+    risk_level: "low" | "medium" | "high";
+    suggested_team: string;
   };
 }
 
@@ -104,6 +110,19 @@ const customerNames = [
   "郑欣妍",
 ];
 
+const customerRegions = [
+  "上海市 浦东新区",
+  "北京市 朝阳区",
+  "广东省 深圳市",
+  "浙江省 杭州市",
+  "四川省 成都市",
+  "江苏省 南京市",
+  "湖北省 武汉市",
+  "福建省 厦门市",
+  "陕西省 西安市",
+  "重庆市 渝中区",
+];
+
 function makeCustomer(i: number): Customer {
   return {
     id: `C${1000 + i}`,
@@ -112,6 +131,7 @@ function makeCustomer(i: number): Customer {
     phone: `138****${String(1000 + i * 137).slice(-4)}`,
     email: `user${i}@example.com`,
     channel: (["web", "wechat", "app", "weibo", "email"] as Channel[])[i % 5],
+    region: customerRegions[i],
     currentPage: ["/products/1203", "/cart", "/order/detail", "/home", "/help"][i % 5],
     vipLevel: i % 3 === 0 ? "黄金会员" : i % 3 === 1 ? "白银会员" : undefined,
     registerDate: `2023-0${(i % 9) + 1}-15`,
@@ -309,64 +329,149 @@ const lastTimes = [
 
 const aiSummaries: Record<number, Session["aiSummary"]> = {
   0: {
-    intent: "咨询产品规格及优惠信息",
-    keyPoints: ["关注续航时间（30小时）", "多设备连接需求", "有购买意向，询问优惠"],
-    sentiment: "positive",
-    suggestedAction: "推荐当前优惠活动并引导下单",
+    handoff_reason: "purchase_consultation_handoff",
+    l1_intent: "售前",
+    l2_intent: "产品咨询与优惠",
+    l3_intent: "优惠咨询",
+    user_need: "用户咨询无线降噪耳机 Pro 的续航、多设备连接及当前优惠，希望确认后下单。",
+    collected_slots: {
+      product_model: "无线降噪耳机 Pro",
+      battery_life: "30 小时，开启降噪约 24 小时",
+      multi_device: "supports_two_devices",
+      purchase_intent: "collected",
+    },
+    missing_slots: ["target_price", "shipping_region"],
+    risk_level: "low",
+    suggested_team: "sales_support",
   },
   1: {
-    intent: "催促订单发货",
-    keyPoints: ["订单已下单2天未发货", "客户情绪不耐烦", "明确要求转人工"],
-    sentiment: "negative",
-    suggestedAction: "立即查询物流并向客户致歉",
+    handoff_reason: "shipping_delay_request",
+    l1_intent: "订单",
+    l2_intent: "物流与发货",
+    l3_intent: "催促发货",
+    user_need: "用户反馈订单下单两天仍未发货，并明确要求人工客服查询发货时间。",
+    collected_slots: {
+      delay_duration: "2_days",
+      handoff_requested: "collected",
+      email: "collected",
+    },
+    missing_slots: ["order_id"],
+    risk_level: "medium",
+    suggested_team: "order_support",
   },
   2: {
-    intent: "产品质量投诉",
-    keyPoints: ["包装破损", "产品有划痕", "已提供图片证据"],
-    sentiment: "negative",
-    suggestedAction: "优先安排换货，主动补偿",
+    handoff_reason: "damaged_item_complaint",
+    l1_intent: "售后",
+    l2_intent: "退换货与退款",
+    l3_intent: "破损换货",
+    user_need: "用户投诉商品包装破损且产品有划痕，已发送图片，希望获得处理方案。",
+    collected_slots: {
+      damage_description: "包装破损，产品有划痕",
+      evidence_status: "image_uploaded",
+      preferred_resolution: "replacement",
+    },
+    missing_slots: ["order_id", "email"],
+    risk_level: "high",
+    suggested_team: "after_sales",
   },
   3: {
-    intent: "APP 登录故障排查",
-    keyPoints: ["提示服务器错误", "影响正常使用"],
-    sentiment: "negative",
-    suggestedAction: "收集设备信息，转技术团队",
+    handoff_reason: "app_login_error",
+    l1_intent: "技术支持",
+    l2_intent: "账号与登录",
+    l3_intent: "APP 登录异常",
+    user_need: "用户反馈 APP 无法登录，页面提示服务器错误，需要人工继续排查。",
+    collected_slots: {
+      issue_type: "login_failed",
+      error_message: "服务器错误",
+      platform: "app",
+    },
+    missing_slots: ["device_model", "app_version", "screenshot"],
+    risk_level: "medium",
+    suggested_team: "technical_support",
   },
   4: {
-    intent: "物流时效咨询",
-    keyPoints: ["关心发货时间"],
-    sentiment: "neutral",
-    suggestedAction: "说明常规发货时效",
+    handoff_reason: "shipping_timeline_question",
+    l1_intent: "订单",
+    l2_intent: "物流与发货",
+    l3_intent: "发货时效咨询",
+    user_need: "用户询问订单预计什么时候发货，需要确认当前订单处理进度。",
+    collected_slots: {
+      question_topic: "shipping_timeline",
+      email: "collected",
+    },
+    missing_slots: ["order_id"],
+    risk_level: "low",
+    suggested_team: "order_support",
   },
   5: {
-    intent: "退款进度咨询",
-    keyPoints: ["超过7天未到账", "情绪焦虑"],
-    sentiment: "negative",
-    suggestedAction: "查询退款流水并加急处理",
+    handoff_reason: "refund_status_overdue",
+    l1_intent: "售后",
+    l2_intent: "退换货与退款",
+    l3_intent: "退款进度查询",
+    user_need: "用户反馈退款已超过 7 天仍未到账，需要人工核查退款流水和处理进度。",
+    collected_slots: {
+      refund_delay: "over_7_days",
+      email: "collected",
+    },
+    missing_slots: ["order_id", "refund_request_id"],
+    risk_level: "medium",
+    suggested_team: "after_sales",
   },
   6: {
-    intent: "支付方式咨询",
-    keyPoints: ["询问是否支持分期"],
-    sentiment: "neutral",
-    suggestedAction: "介绍可用分期方案",
+    handoff_reason: "installment_payment_question",
+    l1_intent: "售前",
+    l2_intent: "支付与优惠",
+    l3_intent: "分期付款咨询",
+    user_need: "用户询问目标商品是否支持分期付款，需要确认可用支付方案。",
+    collected_slots: {
+      payment_question: "installment",
+      channel: "web",
+    },
+    missing_slots: ["product_model", "order_amount"],
+    risk_level: "low",
+    suggested_team: "sales_support",
   },
   7: {
-    intent: "物流异常反馈",
-    keyPoints: ["物流停滞", "订单号 O20241234"],
-    sentiment: "negative",
-    suggestedAction: "联系物流商核实",
+    handoff_reason: "logistics_stalled",
+    l1_intent: "订单",
+    l2_intent: "物流与发货",
+    l3_intent: "物流异常",
+    user_need: "用户提供订单号并反馈物流停滞，需要人工联系物流渠道核实。",
+    collected_slots: {
+      order_id: "O20241234",
+      logistics_status: "stalled",
+      email: "collected",
+    },
+    missing_slots: ["tracking_number"],
+    risk_level: "medium",
+    suggested_team: "logistics_support",
   },
   8: {
-    intent: "系统崩溃严重问题",
-    keyPoints: ["完全无法使用", "反复崩溃"],
-    sentiment: "negative",
-    suggestedAction: "上报技术，提供临时方案",
+    handoff_reason: "critical_app_crash",
+    l1_intent: "技术支持",
+    l2_intent: "系统故障",
+    l3_intent: "反复崩溃",
+    user_need: "用户反馈系统反复崩溃且无法正常使用，需要技术支持介入。",
+    collected_slots: {
+      issue_type: "app_crash",
+      severity: "cannot_use",
+    },
+    missing_slots: ["device_model", "os_version", "app_version", "error_logs"],
+    risk_level: "high",
+    suggested_team: "technical_support",
   },
   9: {
-    intent: "无效咨询",
-    keyPoints: ["客户长时间无响应"],
-    sentiment: "neutral",
-    suggestedAction: "可结束会话",
+    handoff_reason: "no_customer_response",
+    l1_intent: "其他",
+    l2_intent: "无效会话",
+    l3_intent: "长时间无响应",
+    user_need: "用户长时间未继续提供问题信息，当前无可处理诉求。",
+    collected_slots: {
+      last_response_status: "no_response",
+    },
+    missing_slots: ["user_question"],
+    risk_level: "low",
+    suggested_team: "general_support",
   },
 };
 
