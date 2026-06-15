@@ -37,6 +37,7 @@ export interface Session {
   unread: number;
   tags: SessionTag[];
   channel: Channel;
+  shortTitle: string;
   lastMessage: string;
   lastTime: string;
   startTime: string;
@@ -314,6 +315,19 @@ const lastMessages = [
   "不回复",
 ];
 
+const shortTitles = [
+  "咨询耳机优惠与下单",
+  "订单发货进度催促",
+  "产品破损投诉换货",
+  "APP 登录异常报错",
+  "订单发货时间咨询",
+  "退款到账超时跟进",
+  "分期付款政策咨询",
+  "物流停滞人工介入",
+  "系统崩溃技术支持",
+  "用户长时间无响应",
+];
+
 const lastTimes = [
   "刚刚",
   "2分钟前",
@@ -482,6 +496,7 @@ export const sessions: Session[] = Array.from({ length: 10 }, (_, i) => ({
   unread: [2, 5, 0, 1, 0, 0, 3, 8, 0, 0][i],
   tags: allTags[i],
   channel: (["web", "wechat", "app", "weibo", "email"] as Channel[])[i % 5],
+  shortTitle: shortTitles[i],
   lastMessage: lastMessages[i],
   lastTime: lastTimes[i],
   startTime: "2025-01-15 14:20",

@@ -27,6 +27,8 @@ const CATEGORIES = ["常用话术", "政策说明", "链接素材", "图片素�
 
 function SettingsPage() {
   const [items, setItems] = useState<QR[]>(initialQuickReplies);
+  const [categories, setCategories] = useState(() => CATEGORIES);
+  const [newCategory, setNewCategory] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<QR | null>(null);
 
@@ -71,6 +73,21 @@ function SettingsPage() {
     startEdit(fresh);
   };
 
+  const addCategory = () => {
+    const nextCategory = newCategory.trim().slice(0, 12);
+    if (!nextCategory) {
+      toast.error("请输入大类名称");
+      return;
+    }
+    if (categories.includes(nextCategory)) {
+      toast.error("该大类已存在");
+      return;
+    }
+    setCategories((prev) => [...prev, nextCategory]);
+    setNewCategory("");
+    toast.success("已新增大类", { description: nextCategory });
+  };
+
   return (
     <div className="flex h-screen bg-background">
       <AppSidebar />
@@ -93,9 +110,28 @@ function SettingsPage() {
                 <h2 className="font-semibold">快捷回复库</h2>
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{items.length} 条</span>
               </div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addCategory();
+                  }}
+                  placeholder="新增大类"
+                  maxLength={12}
+                  className="h-8 w-32 rounded-lg border bg-background px-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+                <button
+                  onClick={addCategory}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  大类
+                </button>
+              </div>
             </div>
             <div className="space-y-6">
-              {CATEGORIES.map((cat) => {
+              {categories.map((cat) => {
                 const list = grouped[cat] ?? [];
                 return (
                   <div key={cat}>
@@ -145,7 +181,7 @@ function SettingsPage() {
                                     onChange={(e) => setDraft({ ...draft, category: e.target.value })}
                                     className="rounded-lg border bg-background px-2 py-1 text-xs outline-none focus:border-primary"
                                   >
-                                    {CATEGORIES.map((c) => (
+                                    {categories.map((c) => (
                                       <option key={c} value={c}>{c}</option>
                                     ))}
                                   </select>

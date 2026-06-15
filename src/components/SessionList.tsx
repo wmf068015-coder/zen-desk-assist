@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { type Message, type Session, type SessionStatus, CHANNEL_LABELS, TAG_LABELS } from "@/lib/mock-data";
-import { StatusBadge, TagBadge, ChannelIcon } from "./StatusBadge";
+import { TagBadge, ChannelIcon } from "./StatusBadge";
 import { cn } from "@/lib/utils";
 import { Search, Filter, ArrowRightLeft } from "lucide-react";
 
@@ -56,7 +56,14 @@ export function SessionList({
       if (channelFilter !== "all" && s.channel !== channelFilter) return false;
       if (tagFilter !== "all" && !s.tags.includes(tagFilter as never)) return false;
       if (transferredOnly && !s.transferred) return false;
-      if (query && !s.customer.name.includes(query) && !lastMessage.includes(query)) return false;
+      if (
+        query &&
+        !s.customer.name.includes(query) &&
+        !s.shortTitle.includes(query) &&
+        !lastMessage.includes(query)
+      ) {
+        return false;
+      }
       return true;
     });
   }, [sessions, filter, query, channelFilter, tagFilter, transferredOnly]);
@@ -86,7 +93,7 @@ export function SessionList({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索客户名称或消息"
+            placeholder="搜索客户名称、主题或消息"
             className="h-9 w-full rounded-lg border bg-background pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
@@ -218,21 +225,31 @@ function SessionItem({
           <span className="truncate text-sm font-semibold">{session.customer.name}</span>
           <span className="shrink-0 text-[11px] text-muted-foreground">{session.lastTime}</span>
         </div>
-        <div className="mt-1 flex items-center gap-1.5">
-          <StatusBadge status={session.status} />
-          {session.transferred && (
+        <div className="mt-1 flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            主题
+          </span>
+          <span className="truncate text-xs font-medium text-foreground/80">{session.shortTitle}</span>
+        </div>
+        {session.transferred && (
+          <div className="mt-1 flex items-center gap-1.5">
             <span className="inline-flex items-center gap-0.5 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
               <ArrowRightLeft className="h-2.5 w-2.5" />
               转人工
             </span>
-          )}
-        </div>
+          </div>
+        )}
         <p className="mt-1 truncate text-xs text-muted-foreground">{lastMessage}</p>
-        <div className="mt-1.5 flex items-center justify-between">
-          <div className="flex gap-1">
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 gap-1">
             {session.tags.slice(0, 2).map((t) => (
               <TagBadge key={t} tag={t} />
             ))}
+            {session.tags.length > 2 && (
+              <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                +{session.tags.length - 2}
+              </span>
+            )}
           </div>
           {session.unread > 0 && (
             <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold text-destructive-foreground">
