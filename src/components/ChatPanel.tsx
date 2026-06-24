@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import type { Session, Message } from "@/lib/mock-data";
+import type { Session, Message, VisitorFormSubmission } from "@/lib/mock-data";
 import { quickReplies } from "@/lib/mock-data";
 import { knowledgeStore } from "@/lib/knowledge-store";
 import { StatusBadge, TagBadge, ChannelIcon } from "./StatusBadge";
@@ -61,6 +61,7 @@ export function ChatPanel({
   const [actionMessageId, setActionMessageId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [openFormId, setOpenFormId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -72,6 +73,7 @@ export function ChatPanel({
     setSelectionMode(false);
     setSelectedMessageIds([]);
     setSummaryExpanded(false);
+    setOpenFormId(null);
   }, [session.id]);
 
   const send = () => {
@@ -114,7 +116,11 @@ export function ChatPanel({
   };
 
   const handlePanelClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest("[data-message-interactive]")) return;
+    const target = e.target as HTMLElement;
+    if (openFormId && !target.closest("[data-form-panel]") && !target.closest("[data-form-toggle]")) {
+      setOpenFormId(null);
+    }
+    if (target.closest("[data-message-interactive]")) return;
     if (actionMessageId || selectionMode) closeMessageActions();
   };
 
@@ -448,6 +454,21 @@ export function ChatPanel({
               onCopy={copyMessage}
               onRecall={recallMessage}
               onStartMultiSelect={startMultiSelect}
+              formSubmission={
+                m.formSubmissionId
+                  ? session.visitorForms?.find((form) => form.id === m.formSubmissionId)
+                  : undefined
+              }
+              formOpen={m.formSubmissionId ? openFormId === m.formSubmissionId : false}
+              onToggleForm={
+                m.formSubmissionId
+                  ? () =>
+                      setOpenFormId((id) =>
+                        id === m.formSubmissionId ? null : (m.formSubmissionId ?? null),
+                      )
+                  : undefined
+              }
+              onCloseForm={openFormId ? () => setOpenFormId(null) : undefined}
             />
           ))}
           <div ref={endRef} />
@@ -682,28 +703,102 @@ function getMessageContentText(message: Message) {
   return message.content;
 }
 
+function VisitorFormViewer({ form }: { form: VisitorFormSubmission }) {
+  return (
+    <div
+      className="mt-2 overflow-hidden rounded-xl border bg-card text-left shadow-sm"
+      data-form-panel
+      data-message-interactive
+    >
+      <div className="border-b bg-primary/5 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <h4 className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
+            {form.title}
+          </h4>
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+            Secure form
+          </span>
+        </div>
+        <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <span className="rounded-full bg-muted px-1.5 py-0.5 font-medium">{form.intent}</span>
+          <span>已提交 {form.submittedAt}</span>
+          <span className="min-w-0 flex-1 truncate">{form.description}</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-px bg-border">
+        {form.fields.map((field) => (
+          <div
+            key={field.slot}
+            className={cn(
+              "min-w-0 bg-card px-3 py-1.5 text-xs",
+              field.type === "textarea" && "col-span-2",
+            )}
+          >
+            <div className="flex min-w-0 items-center gap-1.5">
+              <p className="min-w-0 flex-1 truncate font-medium text-muted-foreground">
+                {field.label}
+                {field.required && <span className="text-primary"> *</span>}
+              </p>
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                  field.status === "filled" && "bg-success/10 text-success",
+                  field.status === "missing" && "bg-destructive/10 text-destructive",
+                  field.status === "empty_optional" && "bg-muted text-muted-foreground",
+                )}
+              >
+                {getFormFieldStatusLabel(field.status)}
+              </span>
+            </div>
+            <p className="mt-0.5 truncate text-xs leading-relaxed text-foreground">
+              {field.value || "未填写"}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="border-t bg-muted/30 px-3 py-1.5">
+        <p className="text-[11px] leading-relaxed text-muted-foreground">{form.resultMessage}</p>
+      </div>
+    </div>
+  );
+}
+
+function getFormFieldStatusLabel(status: VisitorFormSubmission["fields"][number]["status"]) {
+  if (status === "filled") return "已填写";
+  if (status === "missing") return "缺失";
+  return "选填";
+}
+
 function MessageBubble({
   message,
   highlight,
   selected,
   actionOpen,
   selectionMode,
+  formSubmission,
+  formOpen,
   onToggleSelect,
   onLongPress,
   onCopy,
   onRecall,
   onStartMultiSelect,
+  onToggleForm,
+  onCloseForm,
 }: {
   message: Message;
   highlight?: boolean;
   selected?: boolean;
   actionOpen?: boolean;
   selectionMode?: boolean;
+  formSubmission?: VisitorFormSubmission;
+  formOpen?: boolean;
   onToggleSelect?: (id: string) => void;
   onLongPress?: (id: string) => void;
   onCopy?: (message: Message) => void;
   onRecall?: (message: Message) => void;
   onStartMultiSelect?: (id: string) => void;
+  onToggleForm?: () => void;
+  onCloseForm?: () => void;
 }) {
   const isCustomer = message.sender === "customer";
   const isAi = message.sender === "ai";
@@ -745,6 +840,12 @@ function MessageBubble({
     <div
       className={cn("flex gap-2", isCustomer ? "justify-start" : "justify-end")}
       data-message-interactive
+      onClick={(event) => {
+        const target = event.target as HTMLElement;
+        if (formOpen && !target.closest("[data-form-panel]") && !target.closest("[data-form-toggle]")) {
+          onCloseForm?.();
+        }
+      }}
     >
       {selectionMode && selectable && isCustomer && (
         <input
@@ -798,7 +899,26 @@ function MessageBubble({
           )}
         >
           {message.type === "text" && (
-            <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+            <p className="whitespace-pre-wrap leading-relaxed">
+              {message.content}
+              {formSubmission && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    data-form-toggle
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleForm?.();
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    className="font-semibold text-primary underline underline-offset-2 hover:text-primary/80"
+                  >
+                    点击打开
+                  </button>
+                </>
+              )}
+            </p>
           )}
           {message.type === "image" && (
             <img src={message.content} className="max-w-xs rounded-lg" alt="" />
@@ -813,6 +933,7 @@ function MessageBubble({
             </div>
           )}
         </div>
+        {formSubmission && formOpen && <VisitorFormViewer form={formSubmission} />}
         {actionOpen && selectable && (
           <div className={cn("flex flex-wrap gap-1.5", !isCustomer && "justify-end")}>
             <MessageActionButton

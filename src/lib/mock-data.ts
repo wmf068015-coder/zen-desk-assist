@@ -13,6 +13,7 @@ export interface Message {
   senderName?: string;
   fileName?: string;
   fileSize?: string;
+  formSubmissionId?: string;
 }
 
 export interface Customer {
@@ -28,6 +29,28 @@ export interface Customer {
   registerDate: string;
   orders: { id: string; title: string; amount: number; status: string; date: string }[];
   historySessions: { id: string; date: string; topic: string; rating?: number }[];
+}
+
+export interface VisitorFormField {
+  slot: string;
+  label: string;
+  type: "text" | "email" | "select" | "textarea" | "file";
+  value: string;
+  required: boolean;
+  status: "filled" | "missing" | "empty_optional";
+  sensitive?: boolean;
+}
+
+export interface VisitorFormSubmission {
+  id: string;
+  requestType: string;
+  intent: string;
+  title: string;
+  description: string;
+  submittedAt: string;
+  submitLabel: string;
+  resultMessage: string;
+  fields: VisitorFormField[];
 }
 
 export interface Session {
@@ -46,6 +69,7 @@ export interface Session {
   waitingSeconds?: number;
   queued?: boolean;
   queuePosition?: number;
+  visitorForms?: VisitorFormSubmission[];
   aiSummary?: {
     handoff_reason: string;
     l1_intent: string;
@@ -218,6 +242,16 @@ const sampleMessages: Record<number, Message[]> = {
       content: "好的，那现在有什么优惠吗？我想下单",
       time: "14:23",
     },
+    {
+      id: "m6",
+      sender: "ai",
+      type: "text",
+      content:
+        "To help us process your request faster and more accurately, please complete this secure form. After you submit it, we'll continue helping you in this chat.",
+      time: "14:24",
+      senderName: "AI助手",
+      formSubmissionId: "form-shipping-001",
+    },
   ],
   1: [
     {
@@ -243,6 +277,16 @@ const sampleMessages: Record<number, Message[]> = {
       content: "好的，正在为您转接人工客服，请稍候…",
       time: "10:06",
       senderName: "AI助手",
+    },
+    {
+      id: "m5",
+      sender: "ai",
+      type: "text",
+      content:
+        "To help us process your request faster and more accurately, please complete this secure form. After you submit it, we'll continue helping you in this chat.",
+      time: "10:07",
+      senderName: "AI助手",
+      formSubmissionId: "form-shipping-002",
     },
   ],
   2: [
@@ -282,6 +326,16 @@ const sampleMessages: Record<number, Message[]> = {
       content: "非常抱歉！我已经记录您的问题，我们会立即为您安排换货，物流单号稍后会发送给您。",
       time: "09:34",
       senderName: "小美",
+    },
+    {
+      id: "m6",
+      sender: "ai",
+      type: "text",
+      content:
+        "To help us process your request faster and more accurately, please complete this secure form. After you submit it, we'll continue helping you in this chat.",
+      time: "09:35",
+      senderName: "AI助手",
+      formSubmissionId: "form-product-issue-001",
     },
   ],
 };
@@ -327,6 +381,136 @@ const shortTitles = [
   "系统崩溃技术支持",
   "用户长时间无响应",
 ];
+
+const visitorForms: Record<number, VisitorFormSubmission[]> = {
+  0: [
+    {
+      id: "form-shipping-001",
+      requestType: "shipping",
+      intent: "Shipping details",
+      title: "Complete shipping details",
+      description: "Please provide the missing order information so we can check the shipment safely.",
+      submittedAt: "14:25",
+      submitLabel: "Check shipment",
+      resultMessage: "Thanks. We will check your shipment details and reply in this chat.",
+      fields: [
+        {
+          slot: "order_id",
+          label: "Order number",
+          type: "text",
+          value: "NF123456",
+          required: true,
+          status: "filled",
+          sensitive: true,
+        },
+        {
+          slot: "email",
+          label: "Order email",
+          type: "email",
+          value: "zhangxm@example.com",
+          required: true,
+          status: "filled",
+          sensitive: true,
+        },
+      ],
+    },
+  ],
+  1: [
+    {
+      id: "form-shipping-002",
+      requestType: "shipping",
+      intent: "Shipping details",
+      title: "Complete shipping details",
+      description: "Please provide the missing order information so we can check the shipment safely.",
+      submittedAt: "10:08",
+      submitLabel: "Check shipment",
+      resultMessage: "Thanks. We will check your shipment details and reply in this chat.",
+      fields: [
+        {
+          slot: "order_id",
+          label: "Order number",
+          type: "text",
+          value: "NF784216",
+          required: true,
+          status: "filled",
+          sensitive: true,
+        },
+        {
+          slot: "email",
+          label: "Order email",
+          type: "email",
+          value: "lijingyi@example.com",
+          required: true,
+          status: "filled",
+          sensitive: true,
+        },
+      ],
+    },
+  ],
+  2: [
+    {
+      id: "form-product-issue-001",
+      requestType: "product_issue",
+      intent: "Product issue",
+      title: "Tell us about the power issue",
+      description: "These details help us route the issue to the right troubleshooting or warranty flow.",
+      submittedAt: "09:36",
+      submitLabel: "Submit issue details",
+      resultMessage:
+        "Thanks. We have received your product issue details and will help you with the next step.",
+      fields: [
+        {
+          slot: "product_model",
+          label: "Product model",
+          type: "text",
+          value: "CB60",
+          required: true,
+          status: "filled",
+        },
+        {
+          slot: "purchase_channel",
+          label: "Purchase channel",
+          type: "select",
+          value: "NEEWER official site",
+          required: true,
+          status: "filled",
+        },
+        {
+          slot: "power_adapter",
+          label: "Power adapter or battery used",
+          type: "text",
+          value: "Original adapter",
+          required: true,
+          status: "filled",
+        },
+        {
+          slot: "indicator_status",
+          label: "Indicator light status",
+          type: "select",
+          value: "Flashing",
+          required: true,
+          status: "filled",
+        },
+        {
+          slot: "issue_description",
+          label: "Issue description",
+          type: "textarea",
+          value: "包装破损，产品表面有划痕，开机时指示灯闪烁后无法正常工作。",
+          required: true,
+          status: "filled",
+        },
+        {
+          slot: "evidence",
+          label: "Video or photo",
+          type: "file",
+          value: "damage-photo.jpg",
+          required: false,
+          status: "filled",
+        },
+      ],
+    },
+  ],
+};
 
 const lastTimes = [
   "刚刚",
@@ -508,6 +692,7 @@ export const sessions: Session[] = Array.from({ length: 10 }, (_, i) => ({
       : undefined,
   queued: [false, false, false, false, false, false, false, true, false, false][i],
   queuePosition: i === 7 ? 1 : undefined,
+  visitorForms: visitorForms[i],
   aiSummary: aiSummaries[i],
 }));
 
