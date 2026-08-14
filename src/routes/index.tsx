@@ -4,7 +4,12 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { SessionList } from "@/components/SessionList";
 import { ChatPanel } from "@/components/ChatPanel";
 import { CustomerPanel } from "@/components/CustomerPanel";
-import { sessions as initialSessions, type Message } from "@/lib/mock-data";
+import {
+  sessions as initialSessions,
+  type BrowsingProduct,
+  type Message,
+  type Session,
+} from "@/lib/mock-data";
 import { toast } from "sonner";
 
 const CUSTOMER_REMARK_PREFIX = "zen-desk-assist:customer-note:";
@@ -28,6 +33,7 @@ function Index() {
   const [maxCapacity, setMaxCapacity] = useState(10);
 
   const active = sessions.find((s) => s.id === activeId) ?? sessions[0];
+  const revealedOrder = getRevealedOrder(active);
 
   const takeover = (id: string) => {
     setSessions((prev) =>
@@ -150,6 +156,11 @@ function Index() {
     );
   };
 
+  const sendProduct = (id: string, product: BrowsingProduct) => {
+    sendMessage(id, `为您推荐商品：${product.name}\n商品链接：${product.url}`);
+    toast.success("商品已发送", { description: product.name });
+  };
+
   const recallMessage = (sessionId: string, messageId: string) => {
     setSessions((prev) =>
       prev.map((s) => {
@@ -260,9 +271,42 @@ function Index() {
         onRecallMessage={recallMessage}
         onUpdateCustomerRemark={updateCustomerRemark}
       />
-      <CustomerPanel customer={active.customer} />
+      <CustomerPanel
+        key={active.id}
+        customer={active.customer}
+        sessionId={active.id}
+        revealedOrder={revealedOrder}
+        canSend={
+          active.status !== "ended" &&
+          active.status !== "timeout" &&
+          active.status !== "suspended"
+        }
+        onSendProduct={(product) => sendProduct(active.id, product)}
+      />
     </div>
   );
+}
+
+function getRevealedOrder(session: Session) {
+  const fields = session.visitorForms?.flatMap((form) => form.fields) ?? [];
+  const orderIdFromForm = [...fields]
+    .reverse()
+    .find((field) => field.slot === "order_id" && field.value.trim())
+    ?.value.trim();
+  const emailFromForm = [...fields]
+    .reverse()
+    .find((field) => field.slot === "email" && field.value.trim())
+    ?.value.trim();
+  const customerMessages = session.messages
+    .filter((message) => message.sender === "customer")
+    .map((message) => message.content)
+    .join("\n");
+  const orderId = orderIdFromForm ?? customerMessages.match(/\b[A-Z]\d{6,}\b/i)?.[0];
+  const email =
+    emailFromForm ??
+    customerMessages.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+
+  return orderId && email ? { orderId, email } : undefined;
 }
 
 function applyStoredCustomerRemarks(sessionList: typeof initialSessions) {

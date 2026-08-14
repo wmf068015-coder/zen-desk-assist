@@ -16,6 +16,13 @@ export interface Message {
   formSubmissionId?: string;
 }
 
+export interface BrowsingProduct {
+  id: string;
+  name: string;
+  image: string;
+  url: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -25,9 +32,23 @@ export interface Customer {
   channel: Channel;
   region: string;
   currentPage: string;
+  currentProducts: BrowsingProduct[];
   vipLevel?: string;
   registerDate: string;
-  orders: { id: string; title: string; amount: number; status: string; date: string }[];
+  orders: {
+    id: string;
+    title: string;
+    quantity: number;
+    unitPrice: number;
+    amount: number;
+    status: string;
+    date: string;
+    logistics?: {
+      carrier: string;
+      trackingNumber: string;
+      status: string;
+    };
+  }[];
   historySessions: { id: string; date: string; topic: string; rating?: number }[];
 }
 
@@ -148,7 +169,30 @@ const customerRegions = [
   "重庆市 渝中区",
 ];
 
+const browsingProducts: BrowsingProduct[] = [
+  {
+    id: "P1203",
+    name: "无线降噪耳机 Pro",
+    image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=160&auto=format&fit=crop",
+    url: "/products/1203",
+  },
+  {
+    id: "P2408",
+    name: "智能手表 S2",
+    image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=160&auto=format&fit=crop",
+    url: "/products/2408",
+  },
+  {
+    id: "P3106",
+    name: "RGB660 Pro 补光灯",
+    image: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=160&auto=format&fit=crop",
+    url: "/products/3106",
+  },
+];
+
 function makeCustomer(i: number): Customer {
+  const currentPage = ["/products/1203", "/cart", "/order/detail", "/home", "/help"][i % 5];
+
   return {
     id: `C${1000 + i}`,
     name: customerNames[i],
@@ -157,22 +201,32 @@ function makeCustomer(i: number): Customer {
     email: `user${i}@example.com`,
     channel: (["web", "wechat", "app", "weibo", "email"] as Channel[])[i % 5],
     region: customerRegions[i],
-    currentPage: ["/products/1203", "/cart", "/order/detail", "/home", "/help"][i % 5],
+    currentPage,
+    currentProducts: browsingProducts.slice(0, Math.max(1, 3 - (i % 3))),
     vipLevel: i % 3 === 0 ? "黄金会员" : i % 3 === 1 ? "白银会员" : undefined,
     registerDate: `2023-0${(i % 9) + 1}-15`,
     orders: [
       {
         id: `O2024${1000 + i}`,
         title: "无线降噪耳机 Pro",
+        quantity: 1,
+        unitPrice: 1299,
         amount: 1299,
         status: "已完成",
         date: "2024-12-10",
+        logistics: {
+          carrier: "顺丰速运",
+          trackingNumber: `SF${2025000000 + i}`,
+          status: "已签收",
+        },
       },
       {
         id: `O2024${2000 + i}`,
         title: "智能手表 S2",
-        amount: 2499,
-        status: "配送中",
+        quantity: 2,
+        unitPrice: 2499,
+        amount: 4998,
+        status: "待发货",
         date: "2025-01-08",
       },
     ].slice(0, (i % 2) + 1),
@@ -398,7 +452,7 @@ const visitorForms: Record<number, VisitorFormSubmission[]> = {
           slot: "order_id",
           label: "Order number",
           type: "text",
-          value: "NF123456",
+          value: "O20241000",
           required: true,
           status: "filled",
           sensitive: true,
@@ -407,7 +461,7 @@ const visitorForms: Record<number, VisitorFormSubmission[]> = {
           slot: "email",
           label: "Order email",
           type: "email",
-          value: "zhangxm@example.com",
+          value: "user0@example.com",
           required: true,
           status: "filled",
           sensitive: true,
@@ -430,7 +484,7 @@ const visitorForms: Record<number, VisitorFormSubmission[]> = {
           slot: "order_id",
           label: "Order number",
           type: "text",
-          value: "NF784216",
+          value: "O20242001",
           required: true,
           status: "filled",
           sensitive: true,
@@ -439,7 +493,7 @@ const visitorForms: Record<number, VisitorFormSubmission[]> = {
           slot: "email",
           label: "Order email",
           type: "email",
-          value: "lijingyi@example.com",
+          value: "user1@example.com",
           required: true,
           status: "filled",
           sensitive: true,
