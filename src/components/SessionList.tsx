@@ -25,6 +25,7 @@ const statusFilters: { value: SessionStatus | "all" | "unread"; label: string }[
 
 function getMessagePreview(message: Message) {
   if (message.type === "image") return "[图片]";
+  if (message.type === "video") return message.fileName ? `[视频] ${message.fileName}` : "[视频]";
   if (message.type === "file") return message.fileName ? `[文件] ${message.fileName}` : "[文件]";
   return message.content;
 }

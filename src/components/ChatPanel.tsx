@@ -685,6 +685,8 @@ function prettifyCode(value: string) {
 function formatKnowledgeMessage(message: Message) {
   const sender = getMessageSenderLabel(message);
   if (message.type === "image") return `[${message.time} ${sender}] [图片] ${message.content}`;
+  if (message.type === "video")
+    return `[${message.time} ${sender}] [视频] ${message.fileName ?? message.content}${message.fileSize ? ` (${message.fileSize})` : ""}`;
   if (message.type === "file")
     return `[${message.time} ${sender}] [文件] ${message.fileName ?? message.content}${message.fileSize ? ` (${message.fileSize})` : ""}`;
   return `[${message.time} ${sender}] ${message.content}`;
@@ -698,6 +700,8 @@ function getMessageSenderLabel(message: Message) {
 
 function getMessageContentText(message: Message) {
   if (message.type === "image") return `[图片] ${message.content}`;
+  if (message.type === "video")
+    return `[视频] ${message.fileName ?? message.content}${message.fileSize ? ` (${message.fileSize})` : ""}`;
   if (message.type === "file")
     return `[文件] ${message.fileName ?? message.content}${message.fileSize ? ` (${message.fileSize})` : ""}`;
   return message.content;
@@ -923,6 +927,7 @@ function MessageBubble({
           {message.type === "image" && (
             <img src={message.content} className="max-w-xs rounded-lg" alt="" />
           )}
+          {message.type === "video" && <VideoMessage message={message} />}
           {message.type === "file" && (
             <div className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
@@ -977,6 +982,65 @@ function MessageBubble({
           aria-label="选择聊天记录"
         />
       )}
+    </div>
+  );
+}
+
+function VideoMessage({ message }: { message: Message }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [playbackError, setPlaybackError] = useState(false);
+
+  return (
+    <div
+      className="w-[min(360px,60vw)] overflow-hidden rounded-lg bg-black"
+      data-message-interactive
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="relative">
+        <video
+          ref={videoRef}
+          controls
+          controlsList="nodownload"
+          playsInline
+          preload="metadata"
+          className="block aspect-video w-full bg-black object-contain"
+          aria-label={message.fileName ?? "聊天视频"}
+          onPlay={() => {
+            setPlaying(true);
+            setPlaybackError(false);
+          }}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
+          onError={() => setPlaybackError(true)}
+        >
+          <source src={message.content} type="video/mp4" />
+          当前浏览器不支持视频播放。
+        </video>
+        {!playing && (
+          <button
+            type="button"
+            aria-label={`播放视频 ${message.fileName ?? "聊天视频"}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              void videoRef.current?.play().catch(() => setPlaybackError(true));
+            }}
+            className="absolute left-1/2 top-1/2 inline-flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-colors hover:bg-black/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          >
+            <PlayCircle className="h-7 w-7" />
+          </button>
+        )}
+        {playbackError && (
+          <div className="absolute inset-x-0 top-0 bg-destructive/90 px-2 py-1.5 text-center text-[11px] text-destructive-foreground">
+            视频加载失败，请重试
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-3 bg-black/85 px-2.5 py-1.5 text-[11px] text-white/80">
+        <span className="truncate">{message.fileName ?? "聊天视频"}</span>
+        {message.fileSize && <span className="shrink-0">{message.fileSize}</span>}
+      </div>
     </div>
   );
 }

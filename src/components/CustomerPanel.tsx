@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BrowsingProduct, Customer } from "@/lib/mock-data";
 import { CHANNEL_LABELS } from "@/lib/mock-data";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,6 +29,10 @@ interface CustomerPanelProps {
     email: string;
   };
   onSendProduct: (product: BrowsingProduct) => void;
+  onHandoffNoteStateChange: (
+    sessionId: string,
+    state: "unread" | "read" | "cleared",
+  ) => void;
 }
 
 interface StoredHandoffNote {
@@ -42,11 +46,14 @@ export function CustomerPanel({
   canSend,
   revealedOrder,
   onSendProduct,
+  onHandoffNoteStateChange,
 }: CustomerPanelProps) {
   const [draftNote, setDraftNote] = useState("");
   const [savedNote, setSavedNote] = useState("");
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [noteExpanded, setNoteExpanded] = useState(false);
+  const [noteStatus, setNoteStatus] = useState<"unread" | "read" | null>(null);
+  const canMarkNoteRead = useRef(false);
   const [translationInput, setTranslationInput] = useState("");
   const [translationResult, setTranslationResult] = useState("");
   const currentProducts = customer.currentProducts.slice(0, 3);
@@ -63,6 +70,8 @@ export function CustomerPanel({
     setSavedNote(stored?.content ?? "");
     setSavedAt(stored?.updatedAt ?? null);
     setNoteExpanded(false);
+    setNoteStatus(stored?.content ? "unread" : null);
+    canMarkNoteRead.current = Boolean(stored?.content);
   }, [sessionId]);
 
   const saveHandoffNote = () => {
@@ -75,6 +84,9 @@ export function CustomerPanel({
       setSavedNote("");
       setSavedAt(null);
       setNoteExpanded(false);
+      setNoteStatus(null);
+      canMarkNoteRead.current = false;
+      onHandoffNoteStateChange(sessionId, "cleared");
       toast.success("交接便签已清空");
       return;
     }
@@ -85,13 +97,31 @@ export function CustomerPanel({
     setSavedNote(content);
     setSavedAt(updatedAt);
     setNoteExpanded(false);
+    setNoteStatus("unread");
+    canMarkNoteRead.current = false;
+    onHandoffNoteStateChange(sessionId, "unread");
     toast.success("交接便签已保存");
   };
 
-  const translateToChinese = () => {
+  const translateToSystemLanguage = () => {
     const input = translationInput.trim();
     if (!input) return;
-    setTranslationResult(translateSupportMessage(input));
+    setTranslationResult(translateSupportMessage(input, getSystemLanguage()));
+  };
+
+  const toggleHandoffNote = () => {
+    const nextExpanded = !noteExpanded;
+    setNoteExpanded(nextExpanded);
+
+    if (
+      nextExpanded &&
+      savedNote &&
+      noteStatus === "unread" &&
+      canMarkNoteRead.current
+    ) {
+      setNoteStatus("read");
+      onHandoffNoteStateChange(sessionId, "read");
+    }
   };
 
   const clearTranslation = () => {
@@ -224,11 +254,11 @@ export function CustomerPanel({
             <button
               type="button"
               disabled={!translationInput.trim()}
-              onClick={translateToChinese}
+              onClick={translateToSystemLanguage}
               className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Languages className="h-3.5 w-3.5" />
-              翻译成中文
+              翻译
             </button>
             {translationResult && (
               <div
@@ -244,7 +274,7 @@ export function CustomerPanel({
           <div className="border-t pt-2.5">
             <button
               type="button"
-              onClick={() => setNoteExpanded((expanded) => !expanded)}
+              onClick={toggleHandoffNote}
               aria-expanded={noteExpanded}
               aria-controls={`handoff-note-${sessionId}`}
               className="flex h-8 w-full items-center justify-between gap-2 rounded-md px-1.5 text-left transition-colors hover:bg-muted/60"
@@ -254,7 +284,16 @@ export function CustomerPanel({
                 交接便签
               </span>
               <span className="flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground">
-                <span className="truncate">{savedNote ? "已记录" : "未填写"}</span>
+                {noteStatus === "unread" ? (
+                  <span className="inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive">
+                    <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
+                    未读
+                  </span>
+                ) : (
+                  <span className="truncate">
+                    {noteStatus === "read" ? "已查看" : "未填写"}
+                  </span>
+                )}
                 <ChevronDown
                   className={`h-3 w-3 shrink-0 transition-transform ${noteExpanded ? "rotate-180" : ""}`}
                 />
@@ -396,6 +435,11 @@ function getHandoffNoteKey(sessionId: string) {
   return `${HANDOFF_NOTE_PREFIX}${sessionId}`;
 }
 
+export function clearHandoffNote(sessionId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(getHandoffNoteKey(sessionId));
+}
+
 function readHandoffNote(sessionId: string): StoredHandoffNote | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(getHandoffNoteKey(sessionId));
@@ -419,7 +463,20 @@ function formatNoteTime(value: string) {
   });
 }
 
-function translateSupportMessage(value: string) {
+function getSystemLanguage() {
+  if (typeof navigator === "undefined") return "zh-CN";
+  return navigator.languages?.[0] || navigator.language || "zh-CN";
+}
+
+function translateSupportMessage(value: string, targetLanguage: string) {
+  if (targetLanguage.toLowerCase().startsWith("en")) {
+    return translateSupportMessageToEnglish(value);
+  }
+
+  return translateSupportMessageToChinese(value);
+}
+
+function translateSupportMessageToChinese(value: string) {
   const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
   if (/^[\p{Script=Han}\p{P}\p{N}\s]+$/u.test(value.trim())) return value.trim();
 
@@ -436,6 +493,26 @@ function translateSupportMessage(value: string) {
   return "暂未识别该表达，请调整文字后重试。";
 }
 
+function translateSupportMessageToEnglish(value: string) {
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\s+/g, " ");
+  if (/^[\p{Script=Latin}\p{P}\p{N}\s]+$/u.test(trimmed)) return trimmed;
+
+  const exactTranslation = SUPPORT_TRANSLATIONS_TO_ENGLISH[normalized];
+  if (exactTranslation) return exactTranslation;
+  if (/订单/.test(normalized) && /(哪里|状态|物流|送达|配送|延迟)/.test(normalized)) {
+    return "The customer is asking about the order status and delivery progress.";
+  }
+  if (/退款/.test(normalized)) return "The customer would like to request a refund.";
+  if (/退货|退回/.test(normalized)) return "The customer would like to return the product.";
+  if (/破损|损坏/.test(normalized)) return "The customer reports that the product arrived damaged.";
+  if (/无法使用|不能用|无法正常使用/.test(normalized)) {
+    return "The customer reports that the product is not working properly.";
+  }
+
+  return "The expression could not be recognized. Please revise it and try again.";
+}
+
 const SUPPORT_TRANSLATIONS: Record<string, string> = {
   "where is my order?": "我的订单在哪里？",
   "when will my order arrive?": "我的订单什么时候送达？",
@@ -449,3 +526,7 @@ const SUPPORT_TRANSLATIONS: Record<string, string> = {
   "thank you for your patience.": "感谢您的耐心等待。",
   "thank you for your help.": "感谢您的帮助。",
 };
+
+const SUPPORT_TRANSLATIONS_TO_ENGLISH: Record<string, string> = Object.fromEntries(
+  Object.entries(SUPPORT_TRANSLATIONS).map(([english, chinese]) => [chinese, english]),
+);

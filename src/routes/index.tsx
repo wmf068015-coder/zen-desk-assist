@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SessionList } from "@/components/SessionList";
 import { ChatPanel } from "@/components/ChatPanel";
-import { CustomerPanel } from "@/components/CustomerPanel";
+import { clearHandoffNote, CustomerPanel } from "@/components/CustomerPanel";
 import {
   sessions as initialSessions,
   type BrowsingProduct,
@@ -31,9 +31,29 @@ function Index() {
   const [sessions, setSessions] = useState(() => applyStoredCustomerRemarks(initialSessions));
   const [activeId, setActiveId] = useState(sessions[0].id);
   const [maxCapacity, setMaxCapacity] = useState(10);
+  const viewedHandoffNotes = useRef(new Set<string>());
 
   const active = sessions.find((s) => s.id === activeId) ?? sessions[0];
   const revealedOrder = getRevealedOrder(active);
+
+  const selectSession = (id: string) => {
+    if (id === activeId) return;
+    if (viewedHandoffNotes.current.delete(activeId)) {
+      clearHandoffNote(activeId);
+    }
+    setActiveId(id);
+  };
+
+  const updateHandoffNoteState = (
+    sessionId: string,
+    state: "unread" | "read" | "cleared",
+  ) => {
+    if (state === "read") {
+      viewedHandoffNotes.current.add(sessionId);
+      return;
+    }
+    viewedHandoffNotes.current.delete(sessionId);
+  };
 
   const takeover = (id: string) => {
     setSessions((prev) =>
@@ -256,7 +276,7 @@ function Index() {
       <SessionList
         sessions={sessions}
         activeId={active.id}
-        onSelect={setActiveId}
+        onSelect={selectSession}
         maxCapacity={maxCapacity}
         onCapacityChange={setMaxCapacity}
       />
@@ -282,6 +302,7 @@ function Index() {
           active.status !== "suspended"
         }
         onSendProduct={(product) => sendProduct(active.id, product)}
+        onHandoffNoteStateChange={updateHandoffNoteState}
       />
     </div>
   );
@@ -345,6 +366,8 @@ function getMessageSenderLabel(message: Message) {
 
 function getMessageContentText(message: Message) {
   if (message.type === "image") return `[图片] ${message.content}`;
+  if (message.type === "video")
+    return `[视频] ${message.fileName ?? message.content}${message.fileSize ? ` (${message.fileSize})` : ""}`;
   if (message.type === "file")
     return `[文件] ${message.fileName ?? message.content}${message.fileSize ? ` (${message.fileSize})` : ""}`;
   return message.content;

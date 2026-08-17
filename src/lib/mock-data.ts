@@ -2,7 +2,7 @@ export type SessionStatus = "ai" | "waiting" | "human" | "suspended" | "ended" |
 export type Channel = "web" | "wechat" | "app" | "weibo" | "email";
 export type SessionTag = "presale" | "logistics" | "refund" | "complaint" | "tech" | "invalid";
 export type MessageSender = "customer" | "ai" | "agent" | "system";
-export type MessageType = "text" | "image" | "file" | "system";
+export type MessageType = "text" | "image" | "video" | "file" | "system";
 
 export interface Message {
   id: string;
@@ -306,6 +306,15 @@ const sampleMessages: Record<number, Message[]> = {
       senderName: "AI助手",
       formSubmissionId: "form-shipping-001",
     },
+    {
+      id: "m7",
+      sender: "customer",
+      type: "video",
+      content: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+      time: "14:25",
+      fileName: "商品问题视频.mp4",
+      fileSize: "1.1 MB",
+    },
   ],
   1: [
     {
@@ -411,7 +420,7 @@ function defaultMessages(i: number): Message[] {
 }
 
 const lastMessages = [
-  "好的，那现在有什么优惠吗？我想下单",
+  "[视频] 商品问题视频.mp4",
   "我需要人工客服",
   "非常抱歉！已为您安排换货",
   "APP 无法登录，提示服务器错误",
