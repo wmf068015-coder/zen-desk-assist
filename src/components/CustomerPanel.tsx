@@ -14,6 +14,7 @@ import {
   Truck,
   Languages,
   X,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -45,6 +46,7 @@ export function CustomerPanel({
   const [draftNote, setDraftNote] = useState("");
   const [savedNote, setSavedNote] = useState("");
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [noteExpanded, setNoteExpanded] = useState(false);
   const [translationInput, setTranslationInput] = useState("");
   const [translationResult, setTranslationResult] = useState("");
   const currentProducts = customer.currentProducts.slice(0, 3);
@@ -60,6 +62,7 @@ export function CustomerPanel({
     setDraftNote(stored?.content ?? "");
     setSavedNote(stored?.content ?? "");
     setSavedAt(stored?.updatedAt ?? null);
+    setNoteExpanded(false);
   }, [sessionId]);
 
   const saveHandoffNote = () => {
@@ -71,6 +74,7 @@ export function CustomerPanel({
       setDraftNote("");
       setSavedNote("");
       setSavedAt(null);
+      setNoteExpanded(false);
       toast.success("交接便签已清空");
       return;
     }
@@ -80,6 +84,7 @@ export function CustomerPanel({
     setDraftNote(content);
     setSavedNote(content);
     setSavedAt(updatedAt);
+    setNoteExpanded(false);
     toast.success("交接便签已保存");
   };
 
@@ -236,34 +241,52 @@ export function CustomerPanel({
             )}
           </div>
 
-          <div className="border-t pt-3">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
-              <StickyNote className="h-3 w-3 text-primary" />
-              交接便签
-            </div>
-            <textarea
-              value={draftNote}
-              onChange={(event) => setDraftNote(event.target.value.slice(0, 500))}
-              rows={2}
-              maxLength={500}
-              placeholder="输入交接内容"
-              aria-label="交接便签"
-              className="w-full resize-none rounded-md border bg-background px-2.5 py-1.5 text-[11px] leading-relaxed outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
-            />
-            <div className="mt-1 flex items-center justify-between gap-2">
-              <span className="truncate text-[10px] text-muted-foreground">
-                {savedAt ? `保存于 ${formatNoteTime(savedAt)}` : "尚未保存"}
+          <div className="border-t pt-2.5">
+            <button
+              type="button"
+              onClick={() => setNoteExpanded((expanded) => !expanded)}
+              aria-expanded={noteExpanded}
+              aria-controls={`handoff-note-${sessionId}`}
+              className="flex h-8 w-full items-center justify-between gap-2 rounded-md px-1.5 text-left transition-colors hover:bg-muted/60"
+            >
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+                <StickyNote className="h-3 w-3 text-primary" />
+                交接便签
               </span>
-              <button
-                type="button"
-                disabled={draftNote === savedNote}
-                onClick={saveHandoffNote}
-                className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[10px] font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground"
-              >
-                <Save className="h-2.5 w-2.5" />
-                保存
-              </button>
-            </div>
+              <span className="flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground">
+                <span className="truncate">{savedNote ? "已记录" : "未填写"}</span>
+                <ChevronDown
+                  className={`h-3 w-3 shrink-0 transition-transform ${noteExpanded ? "rotate-180" : ""}`}
+                />
+              </span>
+            </button>
+            {noteExpanded && (
+              <div id={`handoff-note-${sessionId}`} className="mt-1.5">
+                <textarea
+                  value={draftNote}
+                  onChange={(event) => setDraftNote(event.target.value.slice(0, 500))}
+                  rows={2}
+                  maxLength={500}
+                  placeholder="输入交接内容"
+                  aria-label="交接便签"
+                  className="w-full resize-none rounded-md border bg-background px-2.5 py-1.5 text-[11px] leading-relaxed outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+                />
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <span className="truncate text-[10px] text-muted-foreground">
+                    {savedAt ? `保存于 ${formatNoteTime(savedAt)}` : "尚未保存"}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={draftNote === savedNote}
+                    onClick={saveHandoffNote}
+                    className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[10px] font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground"
+                  >
+                    <Save className="h-2.5 w-2.5" />
+                    保存
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
 
