@@ -25,6 +25,7 @@ import {
   Pencil,
   PauseCircle,
   PlayCircle,
+  Video,
   ChevronDown,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -38,6 +39,7 @@ interface Props {
   onSuspend: (id: string) => void;
   onResume: (id: string) => void;
   onSendMessage: (id: string, content: string) => void;
+  onSendVideo: (id: string, file: File) => Promise<void>;
   onExport: (id: string, messages?: Message[]) => void;
   onRecallMessage: (sessionId: string, messageId: string) => void;
   onUpdateCustomerRemark: (customerId: string, remark: string) => void;
@@ -50,6 +52,7 @@ export function ChatPanel({
   onSuspend,
   onResume,
   onSendMessage,
+  onSendVideo,
   onExport,
   onRecallMessage,
   onUpdateCustomerRemark,
@@ -62,7 +65,9 @@ export function ChatPanel({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [openFormId, setOpenFormId] = useState<string | null>(null);
+  const [videoUploading, setVideoUploading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -80,6 +85,28 @@ export function ChatPanel({
     if (!input.trim()) return;
     onSendMessage(session.id, input.trim());
     setInput("");
+  };
+
+  const uploadVideo = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("video/")) {
+      toast.error("请选择视频文件");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("视频不能超过 20MB");
+      return;
+    }
+
+    setVideoUploading(true);
+    try {
+      await onSendVideo(session.id, file);
+    } catch {
+      toast.error("视频发送失败，请重试");
+    } finally {
+      setVideoUploading(false);
+      if (videoInputRef.current) videoInputRef.current.value = "";
+    }
   };
 
   const canInput =
@@ -512,6 +539,20 @@ export function ChatPanel({
           <div className="mb-2 flex items-center gap-1">
             <IconBtn icon={<ImageIcon className="h-4 w-4" />} label="图片" />
             <IconBtn icon={<Paperclip className="h-4 w-4" />} label="文件" />
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/mp4,video/webm,video/ogg"
+              className="hidden"
+              aria-label="选择视频文件"
+              onChange={(event) => void uploadVideo(event.target.files?.[0])}
+            />
+            <IconBtn
+              icon={<Video className="h-4 w-4" />}
+              label={videoUploading ? "视频上传中" : "视频"}
+              disabled={!canInput || videoUploading}
+              onClick={() => videoInputRef.current?.click()}
+            />
             <button
               onClick={() => setShowQuick((v) => !v)}
               className={cn(
@@ -559,11 +600,25 @@ export function ChatPanel({
   );
 }
 
-function IconBtn({ icon, label }: { icon: React.ReactNode; label: string }) {
+function IconBtn({
+  icon,
+  label,
+  disabled = false,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
   return (
     <button
-      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
       title={label}
+      aria-label={label}
     >
       {icon}
     </button>

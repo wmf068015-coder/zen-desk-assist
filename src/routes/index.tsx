@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SessionList } from "@/components/SessionList";
 import { ChatPanel } from "@/components/ChatPanel";
-import { clearHandoffNote, CustomerPanel } from "@/components/CustomerPanel";
+import { CustomerPanel } from "@/components/CustomerPanel";
 import {
   sessions as initialSessions,
   type BrowsingProduct,
@@ -31,29 +31,9 @@ function Index() {
   const [sessions, setSessions] = useState(() => applyStoredCustomerRemarks(initialSessions));
   const [activeId, setActiveId] = useState(sessions[0].id);
   const [maxCapacity, setMaxCapacity] = useState(10);
-  const viewedHandoffNotes = useRef(new Set<string>());
 
   const active = sessions.find((s) => s.id === activeId) ?? sessions[0];
   const revealedOrder = getRevealedOrder(active);
-
-  const selectSession = (id: string) => {
-    if (id === activeId) return;
-    if (viewedHandoffNotes.current.delete(activeId)) {
-      clearHandoffNote(activeId);
-    }
-    setActiveId(id);
-  };
-
-  const updateHandoffNoteState = (
-    sessionId: string,
-    state: "unread" | "read" | "cleared",
-  ) => {
-    if (state === "read") {
-      viewedHandoffNotes.current.add(sessionId);
-      return;
-    }
-    viewedHandoffNotes.current.delete(sessionId);
-  };
 
   const takeover = (id: string) => {
     setSessions((prev) =>
@@ -179,6 +159,51 @@ function Index() {
   const sendProduct = (id: string, product: BrowsingProduct) => {
     sendMessage(id, `为您推荐商品：${product.name}\n商品链接：${product.url}`);
     toast.success("商品已发送", { description: product.name });
+    void publishProductToVisitorDemo(product).catch(() => {
+      toast.error("访客端同步失败", { description: "请确认访客端 Demo 已启动" });
+    });
+  };
+
+  const sendVideo = async (id: string, file: File) => {
+    const mediaUrl = await readFileAsDataUrl(file);
+    const message: Message = {
+      id: `m${Date.now()}`,
+      sender: "agent",
+      senderName: "我",
+      type: "video",
+      content: mediaUrl,
+      fileName: file.name,
+      fileSize: formatFileSize(file.size),
+      time: new Date().toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    };
+
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === id
+          ? {
+              ...session,
+              lastMessage: `[视频] ${file.name}`,
+              lastTime: "刚刚",
+              messages: [...session.messages, message],
+            }
+          : session,
+      ),
+    );
+    toast.success("视频已发送", { description: file.name });
+
+    try {
+      await publishVideoToVisitorDemo({
+        name: file.name,
+        sizeLabel: formatFileSize(file.size),
+        mimeType: file.type,
+        dataUrl: mediaUrl,
+      });
+    } catch {
+      toast.error("访客端同步失败", { description: "请确认访客端 Demo 已启动" });
+    }
   };
 
   const recallMessage = (sessionId: string, messageId: string) => {
@@ -276,7 +301,7 @@ function Index() {
       <SessionList
         sessions={sessions}
         activeId={active.id}
-        onSelect={selectSession}
+        onSelect={setActiveId}
         maxCapacity={maxCapacity}
         onCapacityChange={setMaxCapacity}
       />
@@ -287,6 +312,7 @@ function Index() {
         onSuspend={suspendSession}
         onResume={resumeSession}
         onSendMessage={sendMessage}
+        onSendVideo={sendVideo}
         onExport={exportSession}
         onRecallMessage={recallMessage}
         onUpdateCustomerRemark={updateCustomerRemark}
@@ -302,7 +328,6 @@ function Index() {
           active.status !== "suspended"
         }
         onSendProduct={(product) => sendProduct(active.id, product)}
-        onHandoffNoteStateChange={updateHandoffNoteState}
       />
     </div>
   );
@@ -371,4 +396,43 @@ function getMessageContentText(message: Message) {
   if (message.type === "file")
     return `[文件] ${message.fileName ?? message.content}${message.fileSize ? ` (${message.fileSize})` : ""}`;
   return message.content;
+}
+
+async function publishProductToVisitorDemo(product: BrowsingProduct) {
+  if (!import.meta.env.DEV) return;
+  const response = await fetch("http://127.0.0.1:5174/api/demo-product-messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product }),
+  });
+  if (!response.ok) throw new Error("Failed to publish product to visitor demo");
+}
+
+async function publishVideoToVisitorDemo(video: {
+  name: string;
+  sizeLabel: string;
+  mimeType: string;
+  dataUrl: string;
+}) {
+  if (!import.meta.env.DEV) return;
+  const response = await fetch("http://127.0.0.1:5174/api/demo-video-messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ video }),
+  });
+  if (!response.ok) throw new Error("Failed to publish video to visitor demo");
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read video"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatFileSize(size: number) {
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }

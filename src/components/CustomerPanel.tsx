@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { BrowsingProduct, Customer } from "@/lib/mock-data";
 import { CHANNEL_LABELS } from "@/lib/mock-data";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,10 +29,6 @@ interface CustomerPanelProps {
     email: string;
   };
   onSendProduct: (product: BrowsingProduct) => void;
-  onHandoffNoteStateChange: (
-    sessionId: string,
-    state: "unread" | "read" | "cleared",
-  ) => void;
 }
 
 interface StoredHandoffNote {
@@ -46,14 +42,11 @@ export function CustomerPanel({
   canSend,
   revealedOrder,
   onSendProduct,
-  onHandoffNoteStateChange,
 }: CustomerPanelProps) {
   const [draftNote, setDraftNote] = useState("");
   const [savedNote, setSavedNote] = useState("");
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [noteExpanded, setNoteExpanded] = useState(false);
-  const [noteStatus, setNoteStatus] = useState<"unread" | "read" | null>(null);
-  const canMarkNoteRead = useRef(false);
   const [translationInput, setTranslationInput] = useState("");
   const [translationResult, setTranslationResult] = useState("");
   const currentProducts = customer.currentProducts.slice(0, 3);
@@ -70,8 +63,6 @@ export function CustomerPanel({
     setSavedNote(stored?.content ?? "");
     setSavedAt(stored?.updatedAt ?? null);
     setNoteExpanded(false);
-    setNoteStatus(stored?.content ? "unread" : null);
-    canMarkNoteRead.current = Boolean(stored?.content);
   }, [sessionId]);
 
   const saveHandoffNote = () => {
@@ -84,10 +75,7 @@ export function CustomerPanel({
       setSavedNote("");
       setSavedAt(null);
       setNoteExpanded(false);
-      setNoteStatus(null);
-      canMarkNoteRead.current = false;
-      onHandoffNoteStateChange(sessionId, "cleared");
-      toast.success("交接便签已清空");
+      toast.success("备注已清空");
       return;
     }
 
@@ -97,10 +85,7 @@ export function CustomerPanel({
     setSavedNote(content);
     setSavedAt(updatedAt);
     setNoteExpanded(false);
-    setNoteStatus("unread");
-    canMarkNoteRead.current = false;
-    onHandoffNoteStateChange(sessionId, "unread");
-    toast.success("交接便签已保存");
+    toast.success("备注已保存");
   };
 
   const translateToSystemLanguage = () => {
@@ -110,18 +95,7 @@ export function CustomerPanel({
   };
 
   const toggleHandoffNote = () => {
-    const nextExpanded = !noteExpanded;
-    setNoteExpanded(nextExpanded);
-
-    if (
-      nextExpanded &&
-      savedNote &&
-      noteStatus === "unread" &&
-      canMarkNoteRead.current
-    ) {
-      setNoteStatus("read");
-      onHandoffNoteStateChange(sessionId, "read");
-    }
+    setNoteExpanded((expanded) => !expanded);
   };
 
   const clearTranslation = () => {
@@ -281,19 +255,10 @@ export function CustomerPanel({
             >
               <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
                 <StickyNote className="h-3 w-3 text-primary" />
-                交接便签
+                备注
               </span>
               <span className="flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground">
-                {noteStatus === "unread" ? (
-                  <span className="inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive">
-                    <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
-                    未读
-                  </span>
-                ) : (
-                  <span className="truncate">
-                    {noteStatus === "read" ? "已查看" : "未填写"}
-                  </span>
-                )}
+                <span className="truncate">{savedNote ? "已填写" : "未填写"}</span>
                 <ChevronDown
                   className={`h-3 w-3 shrink-0 transition-transform ${noteExpanded ? "rotate-180" : ""}`}
                 />
@@ -306,8 +271,8 @@ export function CustomerPanel({
                   onChange={(event) => setDraftNote(event.target.value.slice(0, 500))}
                   rows={2}
                   maxLength={500}
-                  placeholder="输入交接内容"
-                  aria-label="交接便签"
+                  placeholder="输入备注内容"
+                  aria-label="备注"
                   className="w-full resize-none rounded-md border bg-background px-2.5 py-1.5 text-[11px] leading-relaxed outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
                 />
                 <div className="mt-1 flex items-center justify-between gap-2">
@@ -433,11 +398,6 @@ function InfoRow({ icon, label, value }: { icon?: React.ReactNode; label: string
 
 function getHandoffNoteKey(sessionId: string) {
   return `${HANDOFF_NOTE_PREFIX}${sessionId}`;
-}
-
-export function clearHandoffNote(sessionId: string) {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(getHandoffNoteKey(sessionId));
 }
 
 function readHandoffNote(sessionId: string): StoredHandoffNote | null {
