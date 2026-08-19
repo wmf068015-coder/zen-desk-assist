@@ -27,6 +27,7 @@ import {
   PlayCircle,
   Video,
   ChevronDown,
+  ArrowDown,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -66,12 +67,48 @@ export function ChatPanel({
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [openFormId, setOpenFormId] = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
+  const [showLatestShortcut, setShowLatestShortcut] = useState(false);
+  const messagesViewportRef = useRef<HTMLDivElement>(null);
+  const latestMessageRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const isLatestMessageVisibleRef = useRef(true);
+  const previousSessionIdRef = useRef(session.id);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const sessionChanged = previousSessionIdRef.current !== session.id;
+    const shouldFollowLatest = sessionChanged || isLatestMessageVisibleRef.current;
+    const frame = window.requestAnimationFrame(() => {
+      if (shouldFollowLatest) {
+        endRef.current?.scrollIntoView({ behavior: sessionChanged ? "auto" : "smooth" });
+        isLatestMessageVisibleRef.current = true;
+        setShowLatestShortcut(false);
+      }
+    });
+
+    previousSessionIdRef.current = session.id;
+    return () => window.cancelAnimationFrame(frame);
   }, [session.messages.length, session.id]);
+
+  useEffect(() => {
+    const viewport = messagesViewportRef.current;
+    const latestMessage = latestMessageRef.current;
+    if (!viewport || !latestMessage) {
+      setShowLatestShortcut(false);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const isVisible = entry.isIntersecting;
+        isLatestMessageVisibleRef.current = isVisible;
+        setShowLatestShortcut(!isVisible);
+      },
+      { root: viewport, threshold: 0 },
+    );
+    observer.observe(latestMessage);
+    return () => observer.disconnect();
+  }, [session.id, session.messages.length]);
 
   useEffect(() => {
     setActionMessageId(null);
@@ -142,9 +179,19 @@ export function ChatPanel({
     setSelectedMessageIds([]);
   };
 
+  const scrollToLatest = () => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    isLatestMessageVisibleRef.current = true;
+    setShowLatestShortcut(false);
+  };
+
   const handlePanelClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    if (openFormId && !target.closest("[data-form-panel]") && !target.closest("[data-form-toggle]")) {
+    if (
+      openFormId &&
+      !target.closest("[data-form-panel]") &&
+      !target.closest("[data-form-toggle]")
+    ) {
       setOpenFormId(null);
     }
     if (target.closest("[data-message-interactive]")) return;
@@ -182,7 +229,10 @@ export function ChatPanel({
       toast.warning("请先长按消息选择聊天记录");
       return;
     }
-    const title = window.prompt("知识标题", session.aiSummary?.l3_intent ?? `来自会话 ${session.id}`);
+    const title = window.prompt(
+      "知识标题",
+      session.aiSummary?.l3_intent ?? `来自会话 ${session.id}`,
+    );
     if (!title) return;
     const content = window.prompt(
       "知识正文（已带入选中的聊天记录，可继续整理）",
@@ -264,7 +314,9 @@ export function ChatPanel({
               onClick={() => setSummaryExpanded((v) => !v)}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                summaryExpanded ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
+                summaryExpanded
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted",
               )}
             >
               <Sparkles className="h-3.5 w-3.5" />
@@ -360,8 +412,10 @@ export function ChatPanel({
                     <span
                       className={cn(
                         "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                        session.aiSummary.risk_level === "high" && "bg-destructive/15 text-destructive",
-                        session.aiSummary.risk_level === "medium" && "bg-warning/15 text-warning-foreground",
+                        session.aiSummary.risk_level === "high" &&
+                          "bg-destructive/15 text-destructive",
+                        session.aiSummary.risk_level === "medium" &&
+                          "bg-warning/15 text-warning-foreground",
                         session.aiSummary.risk_level === "low" && "bg-success/15 text-success",
                       )}
                     >
@@ -389,21 +443,28 @@ export function ChatPanel({
               {summaryExpanded && (
                 <div className="border-t px-3 pb-3 pt-2">
                   <div className="grid gap-2 text-xs md:grid-cols-2">
-                    <SummaryField label="转人工原因" value={translateHandoffReason(session.aiSummary.handoff_reason)} />
+                    <SummaryField
+                      label="转人工原因"
+                      value={translateHandoffReason(session.aiSummary.handoff_reason)}
+                    />
                     <SummaryField
                       label="意图路径"
                       value={`${session.aiSummary.l1_intent} / ${session.aiSummary.l2_intent} / ${session.aiSummary.l3_intent}`}
                     />
                   </div>
-                  <SummaryField className="mt-2" label="用户诉求" value={session.aiSummary.user_need} />
+                  <SummaryField
+                    className="mt-2"
+                    label="用户诉求"
+                    value={session.aiSummary.user_need}
+                  />
                   <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
                     <div className="rounded-md bg-muted/50 px-2 py-1.5">
                       <p className="font-medium text-foreground">已收集信息</p>
                       <div className="mt-1 space-y-0.5 text-muted-foreground">
                         {Object.entries(session.aiSummary.collected_slots).map(([key, value]) => (
                           <p key={key}>
-                            <span className="text-foreground">{translateSlotLabel(key)}</span>
-                            ：{translateSlotValue(value)}
+                            <span className="text-foreground">{translateSlotLabel(key)}</span>：
+                            {translateSlotValue(value)}
                           </p>
                         ))}
                       </div>
@@ -430,76 +491,97 @@ export function ChatPanel({
       )}
 
       {/* Messages */}
-      <div className="scrollbar-thin flex-1 overflow-y-auto px-6 py-4">
-        <div className="mx-auto max-w-3xl space-y-4">
-          {selectionMode && (
-            <div
-              className="sticky top-0 z-10 flex items-center justify-between rounded-lg border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur"
-              data-message-interactive
-            >
-              <span className="font-medium text-success">
-                已选择 {selectedMessages.length} 条聊天记录
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={exportSelectedMessages}
-                  className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 py-1 font-medium text-primary hover:bg-primary/10"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  导出聊天记录
-                </button>
-                <button
-                  onClick={() => setSelectedMessageIds(selectableMessages.map((m) => m.id))}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  全选
-                </button>
-                <button
-                  onClick={closeMessageActions}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  清空
-                </button>
+      <div className="relative min-h-0 flex-1">
+        <div ref={messagesViewportRef} className="scrollbar-thin h-full overflow-y-auto px-6 py-4">
+          <div className="mx-auto max-w-3xl space-y-4">
+            {selectionMode && (
+              <div
+                className="sticky top-0 z-10 flex items-center justify-between rounded-lg border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur"
+                data-message-interactive
+              >
+                <span className="font-medium text-success">
+                  已选择 {selectedMessages.length} 条聊天记录
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={exportSelectedMessages}
+                    className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 py-1 font-medium text-primary hover:bg-primary/10"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    导出聊天记录
+                  </button>
+                  <button
+                    onClick={() => setSelectedMessageIds(selectableMessages.map((m) => m.id))}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    全选
+                  </button>
+                  <button
+                    onClick={closeMessageActions}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    清空
+                  </button>
+                </div>
               </div>
+            )}
+            <div className="flex justify-center">
+              <span className="rounded-full bg-muted px-3 py-1 text-[11px] text-muted-foreground">
+                今天 {session.startTime}
+              </span>
             </div>
-          )}
-          <div className="flex justify-center">
-            <span className="rounded-full bg-muted px-3 py-1 text-[11px] text-muted-foreground">
-              今天 {session.startTime}
-            </span>
+            {session.messages.map((m, index) => (
+              <div
+                key={m.id}
+                ref={index === session.messages.length - 1 ? latestMessageRef : undefined}
+              >
+                <MessageBubble
+                  message={m}
+                  highlight={showAiHistory && m.sender === "ai"}
+                  selected={selectedMessageIds.includes(m.id)}
+                  actionOpen={actionMessageId === m.id}
+                  selectionMode={selectionMode}
+                  onToggleSelect={m.sender === "system" ? undefined : toggleMessageSelection}
+                  onLongPress={m.sender === "system" ? undefined : openMessageActions}
+                  onCopy={copyMessage}
+                  onRecall={recallMessage}
+                  onStartMultiSelect={startMultiSelect}
+                  formSubmission={
+                    m.formSubmissionId
+                      ? session.visitorForms?.find((form) => form.id === m.formSubmissionId)
+                      : undefined
+                  }
+                  formOpen={m.formSubmissionId ? openFormId === m.formSubmissionId : false}
+                  onToggleForm={
+                    m.formSubmissionId
+                      ? () =>
+                          setOpenFormId((id) =>
+                            id === m.formSubmissionId ? null : (m.formSubmissionId ?? null),
+                          )
+                      : undefined
+                  }
+                  onCloseForm={openFormId ? () => setOpenFormId(null) : undefined}
+                />
+              </div>
+            ))}
+            <div ref={endRef} />
           </div>
-          {session.messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              highlight={showAiHistory && m.sender === "ai"}
-              selected={selectedMessageIds.includes(m.id)}
-              actionOpen={actionMessageId === m.id}
-              selectionMode={selectionMode}
-              onToggleSelect={m.sender === "system" ? undefined : toggleMessageSelection}
-              onLongPress={m.sender === "system" ? undefined : openMessageActions}
-              onCopy={copyMessage}
-              onRecall={recallMessage}
-              onStartMultiSelect={startMultiSelect}
-              formSubmission={
-                m.formSubmissionId
-                  ? session.visitorForms?.find((form) => form.id === m.formSubmissionId)
-                  : undefined
-              }
-              formOpen={m.formSubmissionId ? openFormId === m.formSubmissionId : false}
-              onToggleForm={
-                m.formSubmissionId
-                  ? () =>
-                      setOpenFormId((id) =>
-                        id === m.formSubmissionId ? null : (m.formSubmissionId ?? null),
-                      )
-                  : undefined
-              }
-              onCloseForm={openFormId ? () => setOpenFormId(null) : undefined}
-            />
-          ))}
-          <div ref={endRef} />
         </div>
+        {showLatestShortcut && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              scrollToLatest();
+            }}
+            className="absolute bottom-4 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-md transition-colors hover:border-primary/40 hover:text-primary"
+            aria-label="回到最新消息"
+            data-message-interactive
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+            回到最新消息
+          </button>
+        )}
       </div>
 
       {/* Quick replies */}
@@ -901,7 +983,11 @@ function MessageBubble({
       data-message-interactive
       onClick={(event) => {
         const target = event.target as HTMLElement;
-        if (formOpen && !target.closest("[data-form-panel]") && !target.closest("[data-form-toggle]")) {
+        if (
+          formOpen &&
+          !target.closest("[data-form-panel]") &&
+          !target.closest("[data-form-toggle]")
+        ) {
           onCloseForm?.();
         }
       }}

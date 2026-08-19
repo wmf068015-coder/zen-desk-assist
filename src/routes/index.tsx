@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SessionList } from "@/components/SessionList";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -31,9 +31,84 @@ function Index() {
   const [sessions, setSessions] = useState(() => applyStoredCustomerRemarks(initialSessions));
   const [activeId, setActiveId] = useState(sessions[0].id);
   const [maxCapacity, setMaxCapacity] = useState(10);
+  const previousCustomerMessageIdsRef = useRef(
+    new Map(
+      sessions.map((session) => [session.id, getLatestCustomerMessage(session)?.id] as const),
+    ),
+  );
 
   const active = sessions.find((s) => s.id === activeId) ?? sessions[0];
   const revealedOrder = getRevealedOrder(active);
+
+  useEffect(() => {
+    if (!("Notification" in window) || Notification.permission !== "default") return;
+
+    const requestNotificationPermission = () => {
+      void Notification.requestPermission();
+    };
+
+    window.addEventListener("pointerdown", requestNotificationPermission, {
+      capture: true,
+      once: true,
+    });
+    return () =>
+      window.removeEventListener("pointerdown", requestNotificationPermission, { capture: true });
+  }, []);
+
+  useEffect(() => {
+    const previousIds = previousCustomerMessageIdsRef.current;
+    const nextIds = new Map<string, string | undefined>();
+
+    sessions.forEach((session) => {
+      const latestCustomerMessage = getLatestCustomerMessage(session);
+      const previousMessageId = previousIds.get(session.id);
+      nextIds.set(session.id, latestCustomerMessage?.id);
+
+      if (
+        !latestCustomerMessage ||
+        !previousMessageId ||
+        latestCustomerMessage.id === previousMessageId
+      ) {
+        return;
+      }
+
+      const isCurrentConversationVisible =
+        session.id === activeId && document.visibilityState === "visible" && document.hasFocus();
+      if (isCurrentConversationVisible) return;
+
+      const preview = getMessageContentText(latestCustomerMessage);
+      toast.info(`${session.customer.name} 发来新消息`, {
+        description: preview,
+        duration: 8000,
+        action: {
+          label: "查看",
+          onClick: () => {
+            setActiveId(session.id);
+            window.focus();
+          },
+        },
+      });
+
+      if (
+        (document.visibilityState !== "visible" || !document.hasFocus()) &&
+        "Notification" in window &&
+        Notification.permission === "granted"
+      ) {
+        const notification = new Notification("客服工作台收到新消息", {
+          body: `${session.customer.name}：${preview}`,
+          icon: session.customer.avatar,
+          tag: `session-${session.id}`,
+        });
+        notification.onclick = () => {
+          window.focus();
+          setActiveId(session.id);
+          notification.close();
+        };
+      }
+    });
+
+    previousCustomerMessageIdsRef.current = nextIds;
+  }, [activeId, sessions]);
 
   const takeover = (id: string) => {
     setSessions((prev) =>
@@ -323,9 +398,7 @@ function Index() {
         sessionId={active.id}
         revealedOrder={revealedOrder}
         canSend={
-          active.status !== "ended" &&
-          active.status !== "timeout" &&
-          active.status !== "suspended"
+          active.status !== "ended" && active.status !== "timeout" && active.status !== "suspended"
         }
         onSendProduct={(product) => sendProduct(active.id, product)}
       />
@@ -349,10 +422,13 @@ function getRevealedOrder(session: Session) {
     .join("\n");
   const orderId = orderIdFromForm ?? customerMessages.match(/\b[A-Z]\d{6,}\b/i)?.[0];
   const email =
-    emailFromForm ??
-    customerMessages.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+    emailFromForm ?? customerMessages.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
 
   return orderId && email ? { orderId, email } : undefined;
+}
+
+function getLatestCustomerMessage(session: Session) {
+  return [...session.messages].reverse().find((message) => message.sender === "customer");
 }
 
 function applyStoredCustomerRemarks(sessionList: typeof initialSessions) {

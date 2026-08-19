@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { BrowsingProduct, Customer } from "@/lib/mock-data";
-import { CHANNEL_LABELS } from "@/lib/mock-data";
+import { catalogProducts, CHANNEL_LABELS } from "@/lib/mock-data";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Mail,
@@ -15,10 +15,14 @@ import {
   Languages,
   X,
   ChevronDown,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
 const HANDOFF_NOTE_PREFIX = "zen-desk-assist:handoff-note:";
+const CATALOG_PAGE_SIZE = 10;
 
 interface CustomerPanelProps {
   customer: Customer;
@@ -49,7 +53,24 @@ export function CustomerPanel({
   const [noteExpanded, setNoteExpanded] = useState(false);
   const [translationInput, setTranslationInput] = useState("");
   const [translationResult, setTranslationResult] = useState("");
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogPage, setCatalogPage] = useState(1);
   const currentProducts = customer.currentProducts.slice(0, 3);
+  const normalizedCatalogQuery = catalogQuery.trim().toLowerCase();
+  const filteredCatalogProducts = catalogProducts.filter((product) => {
+    if (!normalizedCatalogQuery) return true;
+    return [product.id, product.name, ...product.keywords].some((value) =>
+      value.toLowerCase().includes(normalizedCatalogQuery),
+    );
+  });
+  const catalogTotalPages = Math.max(
+    1,
+    Math.ceil(filteredCatalogProducts.length / CATALOG_PAGE_SIZE),
+  );
+  const catalogPageProducts = filteredCatalogProducts.slice(
+    (catalogPage - 1) * CATALOG_PAGE_SIZE,
+    catalogPage * CATALOG_PAGE_SIZE,
+  );
   const visibleOrder =
     revealedOrder?.email.trim().toLowerCase() === customer.email.trim().toLowerCase()
       ? customer.orders.find(
@@ -138,16 +159,20 @@ export function CustomerPanel({
       </Section>
 
       <Tabs defaultValue="browsing" className="border-t px-5 py-4">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="browsing" className="gap-1.5 px-2 text-xs">
-            <Globe className="h-3.5 w-3.5" />
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="browsing" className="gap-1 px-1 text-[11px]">
+            <Globe className="h-3 w-3" />
             当前浏览
             <span className="text-[10px] text-muted-foreground">{currentProducts.length}</span>
           </TabsTrigger>
-          <TabsTrigger value="order" className="gap-1.5 px-2 text-xs">
-            <Package className="h-3.5 w-3.5" />
+          <TabsTrigger value="order" className="gap-1 px-1 text-[11px]">
+            <Package className="h-3 w-3" />
             订单信息
             <span className="text-[10px] text-muted-foreground">{visibleOrder ? 1 : 0}</span>
+          </TabsTrigger>
+          <TabsTrigger value="catalog" className="gap-1 px-1 text-[11px]">
+            <Search className="h-3 w-3" />
+            商品检索
           </TabsTrigger>
         </TabsList>
 
@@ -349,6 +374,116 @@ export function CustomerPanel({
               暂无订单信息
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="catalog" className="mt-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={catalogQuery}
+              onChange={(event) => {
+                setCatalogQuery(event.target.value.slice(0, 80));
+                setCatalogPage(1);
+              }}
+              placeholder="搜索商品名称、SKU或关键词"
+              aria-label="搜索独立站商品"
+              className="h-9 w-full rounded-md border bg-background pl-8 pr-8 text-xs outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+            {catalogQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCatalogQuery("");
+                  setCatalogPage(1);
+                }}
+                className="absolute right-1.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="清空商品搜索"
+                title="清空"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground">
+            <span>{normalizedCatalogQuery ? "检索结果" : "商品销量榜"}</span>
+            <span>{filteredCatalogProducts.length} 件商品</span>
+          </div>
+
+          {catalogPageProducts.length > 0 ? (
+            <div className="mt-2 space-y-1.5">
+              {catalogPageProducts.map((product) => {
+                const salesRank = catalogProducts.findIndex((item) => item.id === product.id) + 1;
+                return (
+                  <div
+                    key={product.id}
+                    className="flex items-center gap-2 rounded-md border bg-background p-1.5"
+                  >
+                    <img
+                      src={product.image}
+                      alt={product.name}
+                      className="h-10 w-10 shrink-0 rounded bg-muted object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="shrink-0 font-mono text-[9px] text-muted-foreground">
+                          #{salesRank}
+                        </span>
+                        <p className="truncate text-[11px] font-semibold">{product.name}</p>
+                      </div>
+                      <code className="mt-0.5 block truncate font-mono text-[9px] text-primary">
+                        {product.url}
+                      </code>
+                      <p className="mt-0.5 text-[9px] text-muted-foreground">
+                        销量 {product.sales.toLocaleString("zh-CN")}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!canSend}
+                      onClick={() => onSendProduct(product)}
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-primary/30 bg-primary/5 text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground"
+                      title={canSend ? `发送${product.name}` : "当前会话不可发送消息"}
+                      aria-label={`发送商品 ${product.name}`}
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-2 flex min-h-20 items-center justify-center rounded-md border border-dashed bg-muted/20 text-xs text-muted-foreground">
+              未找到相关商品
+            </div>
+          )}
+
+          <div className="mt-3 flex h-8 items-center justify-between border-t pt-2">
+            <button
+              type="button"
+              disabled={catalogPage <= 1}
+              onClick={() => setCatalogPage((page) => Math.max(1, page - 1))}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+              aria-label="上一页商品"
+              title="上一页"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="text-[10px] text-muted-foreground">
+              第 {catalogPage} / {catalogTotalPages} 页
+            </span>
+            <button
+              type="button"
+              disabled={catalogPage >= catalogTotalPages}
+              onClick={() => setCatalogPage((page) => Math.min(catalogTotalPages, page + 1))}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+              aria-label="下一页商品"
+              title="下一页"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </TabsContent>
       </Tabs>
     </aside>

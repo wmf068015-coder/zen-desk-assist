@@ -23,6 +23,11 @@ export interface BrowsingProduct {
   url: string;
 }
 
+export interface CatalogProduct extends BrowsingProduct {
+  sales: number;
+  keywords: string[];
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -173,22 +178,104 @@ const browsingProducts: BrowsingProduct[] = [
   {
     id: "P1203",
     name: "无线降噪耳机 Pro",
-    image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=160&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=160&auto=format&fit=crop",
     url: "/products/1203",
   },
   {
     id: "P2408",
     name: "智能手表 S2",
-    image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=160&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=160&auto=format&fit=crop",
     url: "/products/2408",
   },
   {
     id: "P3106",
     name: "RGB660 Pro 补光灯",
-    image: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=160&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=160&auto=format&fit=crop",
     url: "/products/3106",
   },
 ];
+
+const catalogProductSeeds = [
+  {
+    name: "无线降噪耳机 Pro",
+    image:
+      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=160&auto=format&fit=crop",
+    keywords: ["耳机", "音频", "降噪", "通勤"],
+  },
+  {
+    name: "智能手表 S2",
+    image:
+      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=160&auto=format&fit=crop",
+    keywords: ["手表", "穿戴", "运动", "健康"],
+  },
+  {
+    name: "RGB660 Pro 补光灯",
+    image:
+      "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=160&auto=format&fit=crop",
+    keywords: ["补光灯", "摄影", "直播", "灯光"],
+  },
+  {
+    name: "便携蓝牙音箱 Mini",
+    image:
+      "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=160&auto=format&fit=crop",
+    keywords: ["音箱", "音频", "便携", "户外"],
+  },
+  {
+    name: "机械键盘 K87",
+    image:
+      "https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=160&auto=format&fit=crop",
+    keywords: ["键盘", "办公", "游戏", "外设"],
+  },
+  {
+    name: "人体工学无线鼠标",
+    image:
+      "https://images.unsplash.com/photo-1527814050087-3793815479db?w=160&auto=format&fit=crop",
+    keywords: ["鼠标", "办公", "无线", "外设"],
+  },
+  {
+    name: "4K 网络摄像头",
+    image:
+      "https://images.unsplash.com/photo-1587826080692-f439cd0b70da?w=160&auto=format&fit=crop",
+    keywords: ["摄像头", "会议", "直播", "视频"],
+  },
+  {
+    name: "桌面快充底座",
+    image:
+      "https://images.unsplash.com/photo-1586953208448-b95a79798f07?w=160&auto=format&fit=crop",
+    keywords: ["充电", "桌面", "快充", "配件"],
+  },
+  {
+    name: "移动固态硬盘 1TB",
+    image:
+      "https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?w=160&auto=format&fit=crop",
+    keywords: ["硬盘", "存储", "移动", "办公"],
+  },
+  {
+    name: "双模游戏手柄",
+    image:
+      "https://images.unsplash.com/photo-1592840496694-26d035b52b48?w=160&auto=format&fit=crop",
+    keywords: ["手柄", "游戏", "蓝牙", "外设"],
+  },
+];
+
+const catalogVariants = ["标准版", "曜石黑", "云雾白", "升级版", "旗舰版"];
+
+export const catalogProducts: CatalogProduct[] = Array.from({ length: 50 }, (_, index) => {
+  const seed = catalogProductSeeds[index % catalogProductSeeds.length];
+  const variant = catalogVariants[Math.floor(index / catalogProductSeeds.length)];
+  const id = `P${4001 + index}`;
+  return {
+    id,
+    name: `${seed.name} ${variant}`,
+    image: seed.image,
+    url: `/products/${id.toLowerCase()}`,
+    sales: 12860 - index * 173,
+    keywords: seed.keywords,
+  };
+});
 
 function makeCustomer(i: number): Customer {
   const currentPage = ["/products/1203", "/cart", "/order/detail", "/home", "/help"][i % 5];
@@ -452,7 +539,8 @@ const visitorForms: Record<number, VisitorFormSubmission[]> = {
       requestType: "shipping",
       intent: "Shipping details",
       title: "Complete shipping details",
-      description: "Please provide the missing order information so we can check the shipment safely.",
+      description:
+        "Please provide the missing order information so we can check the shipment safely.",
       submittedAt: "14:25",
       submitLabel: "Check shipment",
       resultMessage: "Thanks. We will check your shipment details and reply in this chat.",
@@ -484,7 +572,8 @@ const visitorForms: Record<number, VisitorFormSubmission[]> = {
       requestType: "shipping",
       intent: "Shipping details",
       title: "Complete shipping details",
-      description: "Please provide the missing order information so we can check the shipment safely.",
+      description:
+        "Please provide the missing order information so we can check the shipment safely.",
       submittedAt: "10:08",
       submitLabel: "Check shipment",
       resultMessage: "Thanks. We will check your shipment details and reply in this chat.",
@@ -516,7 +605,8 @@ const visitorForms: Record<number, VisitorFormSubmission[]> = {
       requestType: "product_issue",
       intent: "Product issue",
       title: "Tell us about the power issue",
-      description: "These details help us route the issue to the right troubleshooting or warranty flow.",
+      description:
+        "These details help us route the issue to the right troubleshooting or warranty flow.",
       submittedAt: "09:36",
       submitLabel: "Submit issue details",
       resultMessage:
