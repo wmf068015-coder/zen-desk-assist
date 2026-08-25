@@ -3,6 +3,7 @@ export type TicketStatus = "new" | "processing" | "replied" | "closed";
 export type TicketPriority = "normal" | "high" | "urgent";
 export type TicketSource = "web_widget" | "email" | "agent";
 export type TicketMessageDirection = "inbound" | "outbound";
+export type TicketReplyStatus = "sent" | "unsent" | "failed";
 
 export interface TicketAttachment {
   id: string;
@@ -17,9 +18,11 @@ export interface TicketReply {
   channel: "email";
   from: string;
   to: string;
+  cc?: string[];
   subject: string;
   body: string;
   sentAt: string;
+  action?: "reply" | "forward";
 }
 
 export interface TicketThreadMessage {
@@ -28,6 +31,7 @@ export interface TicketThreadMessage {
   source: TicketSource;
   from: string;
   to: string;
+  cc?: string[];
   subject: string;
   body: string;
   bodyHtml?: string;
@@ -35,6 +39,7 @@ export interface TicketThreadMessage {
   attachments: TicketAttachment[];
   deliveryStatus?: "sent" | "failed";
   includeSignature?: boolean;
+  action?: "reply" | "forward";
 }
 
 export interface SupportTicket {
@@ -56,6 +61,7 @@ export interface SupportTicket {
   mailbox?: string;
   threadId?: string;
   unread?: boolean;
+  assignee?: string;
   messages?: TicketThreadMessage[];
 }
 
@@ -72,6 +78,9 @@ export interface SendTicketEmailInput {
   bodyHtml?: string;
   attachments?: TicketAttachment[];
   from?: string;
+  cc?: string[];
+  closeAfterSend?: boolean;
+  action?: "reply" | "forward";
 }
 
 export const ISSUE_TYPE_LABELS: Record<TicketIssueType, string> = {
@@ -120,7 +129,7 @@ export const initialSupportTickets: SupportTicket[] = [
         mimeType: "image/png",
       },
     ],
-    status: "new",
+    status: "processing",
     priority: "high",
     source: "web_widget",
     customerName: "Jane Cooper",
@@ -132,6 +141,7 @@ export const initialSupportTickets: SupportTicket[] = [
     mailbox: supportMailbox,
     threadId: "TH-JANE-210948",
     unread: true,
+    assignee: "客服小美",
     messages: [
       {
         id: "mail-widget-0042",
@@ -181,6 +191,7 @@ export const initialSupportTickets: SupportTicket[] = [
     mailbox: supportMailbox,
     threadId: "TH-ODW-N210948",
     unread: true,
+    assignee: "客服小陈",
     messages: [
       {
         id: "mail-erp-23901",
@@ -233,7 +244,7 @@ export const initialSupportTickets: SupportTicket[] = [
     description: "退款申请已经通过，但支付账户还没有收到退款，请确认退款流水和到账时间。",
     contact: "maria.refund@example.com",
     attachments: [],
-    status: "replied",
+    status: "closed",
     priority: "high",
     source: "web_widget",
     customerName: "Maria Hill",
@@ -255,6 +266,7 @@ export const initialSupportTickets: SupportTicket[] = [
     mailbox: supportMailbox,
     threadId: "TH-MARIA-REFUND",
     unread: false,
+    assignee: "客服小美",
     messages: [
       {
         id: "mail-widget-0031",
@@ -296,12 +308,12 @@ export const initialSupportTickets: SupportTicket[] = [
         mimeType: "image/jpeg",
       },
     ],
-    status: "new",
+    status: "processing",
     priority: "normal",
     source: "email",
     customerName: "Stan Lal",
     submittedAt: "2026-08-17 23:20",
-    lastUpdatedAt: "2026-08-17 23:20",
+    lastUpdatedAt: "2026-08-17 23:28",
     replies: [],
     mailbox: "support@neewer.com",
     threadId: "TH-STAN-F100",
@@ -324,6 +336,20 @@ export const initialSupportTickets: SupportTicket[] = [
             mimeType: "image/jpeg",
           },
         ],
+      },
+      {
+        id: "mail-agent-23879",
+        direction: "outbound",
+        source: "agent",
+        from: "support@neewer.com",
+        to: "stalal@rogers.com",
+        cc: ["product-support@neewer.com"],
+        subject: "Re: Neewer F100 7 inch monitor compatibility",
+        body: "Hi Stan,\n\nThe F100 can receive the HDMI output from a Sony A7 IV. Please confirm the HDMI cable type shown in your attachment.",
+        sentAt: "2026-08-17 23:28",
+        attachments: [],
+        deliveryStatus: "failed",
+        includeSignature: true,
       },
     ],
   },
@@ -351,12 +377,14 @@ export function getTicketMessages(ticket: SupportTicket): TicketThreadMessage[] 
       source: "agent" as const,
       from: reply.from,
       to: reply.to,
+      cc: reply.cc,
       subject: reply.subject,
       body: reply.body,
       sentAt: reply.sentAt,
       attachments: [],
       deliveryStatus: "sent" as const,
       includeSignature: true,
+      action: reply.action,
     })),
   ];
 }
@@ -386,7 +414,12 @@ export function sendTicketEmail(
   const to = input.to.trim();
   const subject = input.subject.trim();
   const body = input.body.trim();
+  const action = input.action ?? "reply";
+  const cc = (input.cc ?? []).map((address) => address.trim()).filter(Boolean);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new Error("请输入有效的收件邮箱");
+  if (cc.some((address) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address))) {
+    throw new Error("请输入有效的抄送邮箱");
+  }
   if (!subject) throw new Error("邮件主题不能为空");
   if (!body) throw new Error("邮件正文不能为空");
   if (ticket.status === "closed") throw new Error("已关闭工单不能发送邮件");
@@ -398,9 +431,11 @@ export function sendTicketEmail(
     channel: "email",
     from,
     to,
+    cc,
     subject,
     body,
     sentAt,
+    action,
   };
   const message: TicketThreadMessage = {
     id,
@@ -408,6 +443,7 @@ export function sendTicketEmail(
     source: "agent",
     from,
     to,
+    cc,
     subject,
     body,
     bodyHtml: input.bodyHtml?.trim() || undefined,
@@ -415,16 +451,96 @@ export function sendTicketEmail(
     attachments: input.attachments ?? [],
     deliveryStatus: "sent",
     includeSignature: true,
+    action,
   };
 
   return {
     ...ticket,
-    contact: to,
-    status: "replied",
+    contact: action === "forward" ? ticket.contact : to,
+    status: input.closeAfterSend
+      ? "closed"
+      : action === "forward"
+        ? ticket.status === "new"
+          ? "processing"
+          : ticket.status
+        : "replied",
     unread: false,
     lastUpdatedAt: sentAt,
     replies: [...ticket.replies, reply],
     messages: [...getTicketMessages(ticket), message],
+  };
+}
+
+export function getTicketReplyStatus(ticket: SupportTicket): TicketReplyStatus {
+  const latestMessage = getTicketMessages(ticket)
+    .filter((message) => message.action !== "forward")
+    .at(-1);
+  if (!latestMessage || latestMessage.direction === "inbound") return "unsent";
+  return latestMessage.deliveryStatus === "failed" ? "failed" : "sent";
+}
+
+export function completeTicketWithoutReply(
+  ticket: SupportTicket,
+  completedAt = formatDateTime(new Date()),
+): SupportTicket {
+  if (ticket.status === "closed") return ticket;
+  return {
+    ...ticket,
+    status: "closed",
+    unread: false,
+    lastUpdatedAt: completedAt,
+  };
+}
+
+export function retryFailedTicketEmail(
+  ticket: SupportTicket,
+  messageId: string,
+  sentAt = formatDateTime(new Date()),
+): SupportTicket {
+  const messages = getTicketMessages(ticket);
+  const failedMessage = messages.find(
+    (message) =>
+      message.id === messageId &&
+      message.direction === "outbound" &&
+      message.deliveryStatus === "failed",
+  );
+  if (!failedMessage) throw new Error("未找到可重新发送的失败邮件");
+
+  const sentMessage: TicketThreadMessage = {
+    ...failedMessage,
+    sentAt,
+    deliveryStatus: "sent",
+  };
+  const existingReplyIndex = ticket.replies.findIndex((reply) => reply.id === messageId);
+  const sentReply: TicketReply = {
+    id: messageId,
+    channel: "email",
+    from: failedMessage.from,
+    to: failedMessage.to,
+    cc: failedMessage.cc,
+    subject: failedMessage.subject,
+    body: failedMessage.body,
+    sentAt,
+    action: failedMessage.action,
+  };
+  const replies = [...ticket.replies];
+  if (existingReplyIndex >= 0) replies[existingReplyIndex] = sentReply;
+  else replies.push(sentReply);
+
+  return {
+    ...ticket,
+    status:
+      ticket.status === "closed"
+        ? "closed"
+        : failedMessage.action === "forward"
+          ? ticket.status === "new"
+            ? "processing"
+            : ticket.status
+          : "replied",
+    unread: false,
+    lastUpdatedAt: sentAt,
+    replies,
+    messages: messages.map((message) => (message.id === messageId ? sentMessage : message)),
   };
 }
 

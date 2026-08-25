@@ -5,31 +5,44 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
   buildTicketReplyDraft,
+  completeTicketWithoutReply,
   formatDateTime,
+  getTicketReplyStatus,
   getTicketMessages,
   initialSupportTickets,
-  ISSUE_TYPE_LABELS,
+  retryFailedTicketEmail,
   sendTicketEmail,
+  TICKET_STATUS_LABELS,
   type SupportTicket,
   type TicketAttachment,
   type TicketIssueType,
+  type TicketReplyStatus,
   type TicketThreadMessage,
 } from "@/lib/ticket-replies";
+import {
+  applyTicketAssignments,
+  readTicketAssignments,
+  subscribeTicketAssignments,
+} from "@/lib/ticket-assignments";
 import { cn } from "@/lib/utils";
 import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  AlertCircle,
   Bold,
   Check,
+  CheckCircle2,
   Eye,
   Facebook,
   FileText,
+  Forward,
   Globe2,
   Inbox,
   Instagram,
@@ -43,14 +56,17 @@ import {
   Minimize2,
   Music2,
   Paperclip,
+  PencilLine,
   Redo2,
   Reply,
+  RotateCcw,
   Search,
   Send,
   Twitter,
   Underline,
   Undo2,
   User,
+  Users,
   X,
   Youtube,
 } from "lucide-react";
@@ -69,35 +85,51 @@ export const Route = createFileRoute("/tickets")({
   component: TicketsPage,
 });
 
-type TicketFilter = "all" | "read" | "unread";
+type TicketFilter = "all" | "read" | "unread" | "processing" | "closed" | "failed";
 type TimeRange = "7" | "30" | "90" | "180" | "custom";
 type TicketSourceFilter = "all" | "web_widget" | "service@neewer.com" | "support@neewer.com";
 
 interface ReplyDraftState {
   to: string;
+  cc: string;
+  showCc: boolean;
   subject: string;
   body: string;
   bodyHtml: string;
   attachments: TicketAttachment[];
+  closeAfterSend: boolean;
 }
+
+const initialForwardAddresses = [
+  "product-support@neewer.com",
+  "warehouse@neewer.com",
+  "supervisor@neewer.com",
+];
 
 const statusFilters: Array<{ value: TicketFilter; label: string }> = [
   { value: "all", label: "全部" },
   { value: "read", label: "已读" },
   { value: "unread", label: "未读" },
+  { value: "processing", label: "持续处理" },
+  { value: "closed", label: "处理完毕" },
+  { value: "failed", label: "发送失败" },
 ];
 
 function TicketsPage() {
   const [tickets, setTickets] = useState(initialSupportTickets);
   const [activeId, setActiveId] = useState(initialSupportTickets[0]?.id ?? "");
   const [statusFilter, setStatusFilter] = useState<TicketFilter>("all");
-  const [issueFilter, setIssueFilter] = useState<TicketIssueType | "all">("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState<TicketSourceFilter>("all");
   const [timeRange, setTimeRange] = useState<TimeRange>("90");
   const [customStartDate, setCustomStartDate] = useState("2026-05-18");
   const [customEndDate, setCustomEndDate] = useState("2026-08-18");
   const [query, setQuery] = useState("");
   const [replyExpanded, setReplyExpanded] = useState(false);
+  const [forwardDialogOpen, setForwardDialogOpen] = useState(false);
+  const [forwardAddress, setForwardAddress] = useState(initialForwardAddresses[0]);
+  const [newForwardAddress, setNewForwardAddress] = useState("");
+  const [savedForwardAddresses, setSavedForwardAddresses] = useState(initialForwardAddresses);
   const [previewAttachment, setPreviewAttachment] = useState<TicketAttachment | null>(null);
   const [replyDrafts, setReplyDrafts] = useState<Record<string, ReplyDraftState>>({});
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -117,7 +149,10 @@ function TicketsPage() {
         if (disposed || submissions.length === 0) return;
 
         submissions.forEach((submission) => importedTicketIdsRef.current.add(submission.id));
-        const incomingTickets = submissions.map(ticketFromSubmission);
+        const incomingTickets = applyTicketAssignments(
+          submissions.map(ticketFromSubmission),
+          readTicketAssignments(),
+        );
         setTickets((current) => [
           ...incomingTickets.filter(
             (incoming) => !current.some((ticket) => ticket.id === incoming.id),
@@ -140,6 +175,14 @@ function TicketsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const syncAssignments = (assignments = readTicketAssignments()) => {
+      setTickets((current) => applyTicketAssignments(current, assignments));
+    };
+    syncAssignments();
+    return subscribeTicketAssignments(syncAssignments);
+  }, []);
+
   const latestTimestamp = useMemo(
     () => Math.max(...tickets.map((ticket) => parseTicketDate(ticket.lastUpdatedAt).getTime())),
     [tickets],
@@ -152,6 +195,15 @@ function TicketsPage() {
         : customStartDate > customEndDate
           ? "开始日期不能晚于结束日期"
           : "";
+  const assigneeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          tickets.map((ticket) => ticket.assignee).filter((value): value is string => !!value),
+        ),
+      ).sort(),
+    [tickets],
+  );
   const filteredTickets = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     const customStart = new Date(`${customStartDate}T00:00:00`).getTime();
@@ -172,7 +224,17 @@ function TicketsPage() {
         }
         if (statusFilter === "read" && ticket.unread) return false;
         if (statusFilter === "unread" && !ticket.unread) return false;
-        if (issueFilter !== "all" && ticket.issueType !== issueFilter) return false;
+        if (statusFilter === "processing" && ticket.status === "closed") return false;
+        if (statusFilter === "closed" && ticket.status !== "closed") return false;
+        if (statusFilter === "failed" && getTicketReplyStatus(ticket) !== "failed") return false;
+        if (assigneeFilter === "unassigned" && ticket.assignee) return false;
+        if (
+          assigneeFilter !== "all" &&
+          assigneeFilter !== "unassigned" &&
+          ticket.assignee !== assigneeFilter
+        ) {
+          return false;
+        }
         if (sourceFilter === "web_widget" && ticket.source !== "web_widget") return false;
         if (
           sourceFilter !== "all" &&
@@ -202,7 +264,7 @@ function TicketsPage() {
     customEndDate,
     customRangeError,
     customStartDate,
-    issueFilter,
+    assigneeFilter,
     latestTimestamp,
     query,
     sourceFilter,
@@ -218,12 +280,18 @@ function TicketsPage() {
   const activeDraft = activeTicket
     ? (replyDrafts[activeTicket.id] ?? {
         to: defaultDraft?.to ?? "",
+        cc: "",
+        showCc: false,
         subject: defaultDraft?.subject ?? "",
         body: "",
         bodyHtml: "",
         attachments: [],
+        closeAfterSend: false,
       })
     : null;
+  const threadAttachments = activeMessages.flatMap((message) =>
+    message.attachments.map((attachment) => ({ attachment, message })),
+  );
   const unreadCount = tickets.filter((ticket) => ticket.unread).length;
 
   const updateTicket = (ticketId: string, updater: (ticket: SupportTicket) => SupportTicket) => {
@@ -270,6 +338,8 @@ function TicketsPage() {
           body: activeDraft.body,
           bodyHtml: sanitizeRichTextHtml(activeDraft.bodyHtml),
           attachments: activeDraft.attachments,
+          cc: parseEmailAddresses(activeDraft.cc),
+          closeAfterSend: activeDraft.closeAfterSend,
         },
         sentAt,
       );
@@ -278,18 +348,115 @@ function TicketsPage() {
         ...current,
         [activeTicket.id]: {
           ...activeDraft,
+          cc: "",
+          showCc: false,
           body: "",
           bodyHtml: "",
           attachments: [],
+          closeAfterSend: false,
         },
       }));
       setReplyExpanded(false);
-      toast.success("邮件已发送", {
-        description: `已发送至 ${updated.contact}，后续回复会进入当前回复链`,
+      toast.success(activeDraft.closeAfterSend ? "邮件已发送，工单已处理完毕" : "邮件已发送", {
+        description: activeDraft.closeAfterSend
+          ? `已发送至 ${updated.contact}，本回复链已结束处理`
+          : `已发送至 ${updated.contact}，后续回复会进入当前回复链`,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "邮件发送失败，请重试");
     }
+  };
+
+  const completeWithoutReply = () => {
+    if (!activeTicket) return;
+    const updated = completeTicketWithoutReply(activeTicket);
+    updateTicket(activeTicket.id, () => updated);
+    setReplyExpanded(false);
+    toast.success("工单已处理完毕", {
+      description: "本次未发送邮件，原回复状态保持不变",
+    });
+  };
+
+  const openForwardDialog = () => {
+    if (!activeTicket) return;
+    if (activeTicket.status === "closed") {
+      toast.error("已处理完毕的工单不能转发邮件");
+      return;
+    }
+    setNewForwardAddress("");
+    setForwardAddress((current) => current || savedForwardAddresses[0] || "");
+    setForwardDialogOpen(true);
+  };
+
+  const addForwardAddress = () => {
+    const address = newForwardAddress.trim().toLowerCase();
+    if (!isEmailAddress(address)) {
+      toast.error("请输入有效的转发邮箱");
+      return;
+    }
+    setSavedForwardAddresses((current) =>
+      current.includes(address) ? current : [...current, address],
+    );
+    setForwardAddress(address);
+    setNewForwardAddress("");
+    toast.success("转发地址已添加");
+  };
+
+  const forwardLatestMessage = () => {
+    if (!activeTicket) return;
+    const address = forwardAddress.trim();
+    if (!isEmailAddress(address)) {
+      toast.error("请选择或新增有效的转发邮箱");
+      return;
+    }
+    const message = activeMessages.at(-1);
+    if (!message) return;
+    const forwarded = buildForwardedMessage(message);
+    try {
+      const updated = sendTicketEmail(activeTicket, {
+        to: address,
+        subject: `Fwd: ${message.subject.replace(/^(?:Re|Fwd):\s*/i, "")}`,
+        body: forwarded.text,
+        bodyHtml: forwarded.html,
+        attachments: message.attachments,
+        action: "forward",
+      });
+      updateTicket(activeTicket.id, () => updated);
+      setForwardDialogOpen(false);
+      toast.success("邮件已转发", { description: `已转发至 ${address}` });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "邮件转发失败");
+    }
+  };
+
+  const quickRetryFailedMessage = (message: TicketThreadMessage) => {
+    if (!activeTicket) return;
+    try {
+      const updated = retryFailedTicketEmail(activeTicket, message.id);
+      updateTicket(activeTicket.id, () => updated);
+      toast.success("邮件已重新发送", { description: `已发送至 ${message.to}` });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "重新发送失败");
+    }
+  };
+
+  const editFailedMessage = (message: TicketThreadMessage) => {
+    if (!activeTicket) return;
+    setReplyDrafts((current) => ({
+      ...current,
+      [activeTicket.id]: {
+        to: message.to,
+        cc: message.cc?.join(", ") ?? "",
+        showCc: Boolean(message.cc?.length),
+        subject: message.subject,
+        body: message.body,
+        bodyHtml: message.bodyHtml ?? textToHtml(message.body),
+        attachments: message.attachments,
+        closeAfterSend: false,
+      },
+    }));
+    setReplyExpanded(true);
+    toast.info("失败邮件已载入回复框，可修改后重新发送");
   };
 
   return (
@@ -343,15 +510,16 @@ function TicketsPage() {
               <option value="support@neewer.com">support 邮箱</option>
             </select>
             <select
-              value={issueFilter}
-              onChange={(event) => setIssueFilter(event.target.value as TicketIssueType | "all")}
-              aria-label="问题类型"
+              value={assigneeFilter}
+              onChange={(event) => setAssigneeFilter(event.target.value)}
+              aria-label="处理人"
               className="h-9 min-w-0 rounded-md border bg-background px-2 text-[11px] outline-none focus:border-primary"
             >
-              <option value="all">全部问题类型</option>
-              {Object.entries(ISSUE_TYPE_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
+              <option value="all">全部处理人</option>
+              <option value="unassigned">未分配</option>
+              {assigneeOptions.map((assignee) => (
+                <option key={assignee} value={assignee}>
+                  {assignee}
                 </option>
               ))}
             </select>
@@ -448,11 +616,9 @@ function TicketsPage() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1.5">
                 <ReadStatusPill unread={Boolean(activeTicket.unread)} />
-                <ReplyStatusPill sent={activeMessages.at(-1)?.direction === "outbound"} />
+                <TicketStatusPill status={activeTicket.status} />
+                <ReplyStatusPill status={getTicketReplyStatus(activeTicket)} />
                 <SourcePill source={activeTicket.source} mailbox={activeTicket.mailbox} />
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  {ISSUE_TYPE_LABELS[activeTicket.issueType]}
-                </span>
               </div>
               <h2 className="mt-1.5 truncate text-base font-semibold">{activeTicket.title}</h2>
               <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -474,6 +640,8 @@ function TicketsPage() {
                   key={message.id}
                   message={message}
                   onPreviewAttachment={setPreviewAttachment}
+                  onQuickRetry={quickRetryFailedMessage}
+                  onEditFailed={editFailedMessage}
                 />
               ))}
             </div>
@@ -482,7 +650,7 @@ function TicketsPage() {
           <section
             className={cn(
               "scrollbar-thin overflow-y-auto border-t bg-card px-5",
-              replyExpanded ? "max-h-[430px] py-3" : "py-2",
+              replyExpanded ? "max-h-[520px] py-3" : "py-2",
             )}
           >
             <div className="mx-auto max-w-4xl">
@@ -512,7 +680,7 @@ function TicketsPage() {
               </button>
               {replyExpanded && (
                 <>
-                  <div className="grid grid-cols-[52px_minmax(0,1fr)] items-center border-b text-xs">
+                  <div className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center border-b text-xs">
                     <label htmlFor="ticket-reply-to" className="text-muted-foreground">
                       收件人
                     </label>
@@ -524,7 +692,47 @@ function TicketsPage() {
                       className="h-8 min-w-0 bg-transparent outline-none placeholder:text-muted-foreground disabled:opacity-50"
                       placeholder="访客邮箱"
                     />
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => updateDraft({ showCc: !activeDraft.showCc })}
+                        disabled={activeTicket.status === "closed"}
+                        className={cn(
+                          "inline-flex h-7 items-center gap-1 rounded px-2 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40",
+                          activeDraft.showCc && "bg-muted text-foreground",
+                        )}
+                        title="添加抄送人"
+                      >
+                        <Users className="h-3.5 w-3.5" />
+                        抄送
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openForwardDialog}
+                        disabled={activeTicket.status === "closed"}
+                        className="inline-flex h-7 items-center gap-1 rounded px-2 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                        title="转发最新邮件"
+                      >
+                        <Forward className="h-3.5 w-3.5" />
+                        转发
+                      </button>
+                    </div>
                   </div>
+                  {activeDraft.showCc && (
+                    <div className="grid grid-cols-[52px_minmax(0,1fr)] items-center border-b text-xs">
+                      <label htmlFor="ticket-reply-cc" className="text-muted-foreground">
+                        抄送
+                      </label>
+                      <input
+                        id="ticket-reply-cc"
+                        value={activeDraft.cc}
+                        onChange={(event) => updateDraft({ cc: event.target.value })}
+                        disabled={activeTicket.status === "closed"}
+                        className="h-8 min-w-0 bg-transparent outline-none placeholder:text-muted-foreground disabled:opacity-50"
+                        placeholder="多个邮箱用逗号分隔"
+                      />
+                    </div>
+                  )}
                   <div className="grid grid-cols-[52px_minmax(0,1fr)] items-center border-b text-xs">
                     <label htmlFor="ticket-reply-subject" className="text-muted-foreground">
                       主题
@@ -538,6 +746,32 @@ function TicketsPage() {
                       placeholder="邮件主题"
                     />
                   </div>
+                  {threadAttachments.length > 0 && (
+                    <div className="border-b py-2">
+                      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        <span>往来附件</span>
+                        <span className="rounded bg-muted px-1.5 text-[9px]">
+                          {threadAttachments.length}
+                        </span>
+                      </div>
+                      <div className="scrollbar-thin flex gap-1.5 overflow-x-auto pb-0.5">
+                        {threadAttachments.map(({ attachment, message }) => (
+                          <button
+                            key={`${message.id}-${attachment.id}`}
+                            type="button"
+                            onClick={() => setPreviewAttachment(attachment)}
+                            className="inline-flex h-7 max-w-52 shrink-0 items-center gap-1.5 rounded-md border bg-background px-2 text-[10px] text-muted-foreground hover:border-primary/40 hover:text-primary"
+                            title={`${message.sentAt} · ${attachment.name}`}
+                          >
+                            <FileText className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{attachment.name}</span>
+                            <Eye className="h-3 w-3 shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <RichTextEditor
                     key={activeTicket.id}
                     value={activeDraft.bodyHtml}
@@ -579,7 +813,7 @@ function TicketsPage() {
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between border-t pt-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
                     <div className="flex items-center gap-2">
                       <input
                         ref={attachmentInputRef}
@@ -599,15 +833,38 @@ function TicketsPage() {
                       </button>
                       <span className="text-[10px] text-muted-foreground">最多 5 个附件</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={sendReply}
-                      disabled={!activeDraft.body.trim() || activeTicket.status === "closed"}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <Send className="h-4 w-4" />
-                      发送邮件
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={activeDraft.closeAfterSend}
+                          onChange={(event) =>
+                            updateDraft({ closeAfterSend: event.target.checked })
+                          }
+                          disabled={activeTicket.status === "closed"}
+                          className="h-3.5 w-3.5 accent-primary"
+                        />
+                        发送后标记处理完毕
+                      </label>
+                      <button
+                        type="button"
+                        onClick={completeWithoutReply}
+                        disabled={activeTicket.status === "closed"}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-md border border-success/35 px-3 text-xs font-medium text-success hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        无需回复，处理完毕
+                      </button>
+                      <button
+                        type="button"
+                        onClick={sendReply}
+                        disabled={!activeDraft.body.trim() || activeTicket.status === "closed"}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Send className="h-4 w-4" />
+                        发送邮件
+                      </button>
+                    </div>
                   </div>
                 </>
               )}
@@ -624,6 +881,100 @@ function TicketsPage() {
         attachment={previewAttachment}
         onClose={() => setPreviewAttachment(null)}
       />
+      <Dialog open={forwardDialogOpen} onOpenChange={setForwardDialogOpen}>
+        <DialogContent className="max-w-md gap-0 p-0">
+          <DialogHeader className="border-b px-5 py-4 pr-12">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Forward className="h-4 w-4 text-primary" />
+              转发邮件
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              选择已有转发地址，或新增地址后直接转发最新邮件。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 px-5 py-4">
+            <div>
+              <label htmlFor="forward-address" className="mb-1.5 block text-xs font-medium">
+                转发至
+              </label>
+              <select
+                id="forward-address"
+                value={forwardAddress}
+                onChange={(event) => setForwardAddress(event.target.value)}
+                className="h-9 w-full rounded-md border bg-background px-2.5 text-sm outline-none focus:border-primary"
+              >
+                {savedForwardAddresses.map((address) => (
+                  <option key={address} value={address}>
+                    {address}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="new-forward-address" className="mb-1.5 block text-xs font-medium">
+                新增转发地址
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="new-forward-address"
+                  type="email"
+                  value={newForwardAddress}
+                  onChange={(event) => setNewForwardAddress(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addForwardAddress();
+                    }
+                  }}
+                  placeholder="name@example.com"
+                  className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+                />
+                <button
+                  type="button"
+                  onClick={addForwardAddress}
+                  disabled={!newForwardAddress.trim()}
+                  className="h-9 rounded-md border px-3 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  新增
+                </button>
+              </div>
+            </div>
+
+            {activeMessages.at(-1) && (
+              <div className="border-l-2 border-primary/35 bg-muted/30 px-3 py-2.5">
+                <p className="truncate text-xs font-medium">{activeMessages.at(-1)?.subject}</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  来自 {activeMessages.at(-1)?.from} · {activeMessages.at(-1)?.sentAt}
+                  {activeMessages.at(-1)?.attachments.length
+                    ? ` · ${activeMessages.at(-1)?.attachments.length} 个附件`
+                    : ""}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="border-t px-5 py-3">
+            <button
+              type="button"
+              onClick={() => setForwardDialogOpen(false)}
+              className="h-9 rounded-md border px-4 text-sm font-medium hover:bg-muted"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={forwardLatestMessage}
+              disabled={!forwardAddress}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            >
+              <Forward className="h-4 w-4" />
+              直接转发
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -644,7 +995,7 @@ function TicketListItem({
   const receivedAt = latestInboundMessage?.sentAt ?? ticket.submittedAt;
   const source = latestInboundMessage?.source ?? ticket.source;
   const sourceMailbox = latestInboundMessage?.to ?? ticket.mailbox;
-  const replySent = messages.at(-1)?.direction === "outbound";
+  const replyStatus = getTicketReplyStatus(ticket);
 
   return (
     <button
@@ -677,15 +1028,26 @@ function TicketListItem({
         </dd>
 
         <dt className="text-[10px] text-muted-foreground">买家邮箱</dt>
-        <dd className="col-span-3 truncate text-[11px] text-muted-foreground">{ticket.contact}</dd>
+        <dd className="min-w-0 truncate text-[11px] text-muted-foreground">{ticket.contact}</dd>
+        <dt className="text-[10px] text-muted-foreground">处理人</dt>
+        <dd
+          className={cn(
+            "max-w-24 truncate text-[11px]",
+            ticket.assignee ? "font-medium text-foreground" : "text-muted-foreground",
+          )}
+          title={ticket.assignee ?? "未分配"}
+        >
+          {ticket.assignee ?? "未分配"}
+        </dd>
 
         <dt className="text-[10px] text-muted-foreground">状态</dt>
-        <dd>
+        <dd className="flex flex-wrap gap-1">
           <ReadStatusPill unread={Boolean(ticket.unread)} />
+          <TicketStatusPill status={ticket.status} />
         </dd>
         <dt className="text-[10px] text-muted-foreground">回复状态</dt>
         <dd>
-          <ReplyStatusPill sent={replySent} />
+          <ReplyStatusPill status={replyStatus} />
         </dd>
       </dl>
     </button>
@@ -695,9 +1057,13 @@ function TicketListItem({
 function ThreadMessage({
   message,
   onPreviewAttachment,
+  onQuickRetry,
+  onEditFailed,
 }: {
   message: TicketThreadMessage;
   onPreviewAttachment: (attachment: TicketAttachment) => void;
+  onQuickRetry: (message: TicketThreadMessage) => void;
+  onEditFailed: (message: TicketThreadMessage) => void;
 }) {
   const inbound = message.direction === "inbound";
 
@@ -725,13 +1091,24 @@ function ThreadMessage({
                 <MessageSourcePill message={message} />
                 {message.deliveryStatus === "sent" && (
                   <span className="inline-flex items-center gap-0.5 text-[9px] text-success">
-                    <Check className="h-2.5 w-2.5" />
-                    已发送
+                    {message.action === "forward" ? (
+                      <Forward className="h-2.5 w-2.5" />
+                    ) : (
+                      <Check className="h-2.5 w-2.5" />
+                    )}
+                    {message.action === "forward" ? "已转发" : "已发送"}
+                  </span>
+                )}
+                {message.deliveryStatus === "failed" && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-destructive">
+                    <AlertCircle className="h-2.5 w-2.5" />
+                    发送失败
                   </span>
                 )}
               </div>
               <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
                 发送至 {message.to}
+                {message.cc?.length ? ` · 抄送 ${message.cc.join(", ")}` : ""}
               </p>
             </div>
             <time className="shrink-0 text-[10px] text-muted-foreground">{message.sentAt}</time>
@@ -769,6 +1146,33 @@ function ThreadMessage({
                   <Eye className="h-3.5 w-3.5" />
                 </button>
               ))}
+            </div>
+          )}
+
+          {message.deliveryStatus === "failed" && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-destructive/20 bg-destructive/[0.035] px-3 py-2">
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-destructive">
+                <AlertCircle className="h-3.5 w-3.5" />
+                邮件未送达，可直接重发或修改内容
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onQuickRetry(message)}
+                  className="inline-flex h-7 items-center gap-1 rounded-md bg-destructive px-2.5 text-[11px] font-medium text-destructive-foreground hover:bg-destructive/90"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  快捷重发
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onEditFailed(message)}
+                  className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2.5 text-[11px] text-foreground hover:bg-muted"
+                >
+                  <PencilLine className="h-3.5 w-3.5" />
+                  重新编辑
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1179,15 +1583,38 @@ function ReadStatusPill({ unread }: { unread: boolean }) {
   );
 }
 
-function ReplyStatusPill({ sent }: { sent: boolean }) {
+function TicketStatusPill({ status }: { status: SupportTicket["status"] }) {
+  const closed = status === "closed";
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-semibold",
-        sent ? "bg-success/15 text-success" : "bg-warning/20 text-warning-foreground",
+        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-semibold",
+        closed ? "bg-success/15 text-success" : "bg-info/10 text-info",
       )}
     >
-      {sent ? "已发送" : "未发送"}
+      {closed ? (
+        <CheckCircle2 className="h-2.5 w-2.5" />
+      ) : (
+        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      )}
+      {TICKET_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function ReplyStatusPill({ status }: { status: TicketReplyStatus }) {
+  const label = status === "sent" ? "已发送" : status === "failed" ? "发送失败" : "未发送";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-semibold",
+        status === "sent" && "bg-success/15 text-success",
+        status === "unsent" && "bg-warning/20 text-warning-foreground",
+        status === "failed" && "bg-destructive/10 text-destructive",
+      )}
+    >
+      {status === "failed" && <AlertCircle className="h-2.5 w-2.5" />}
+      {label}
     </span>
   );
 }
@@ -1230,6 +1657,52 @@ function formatMailboxSource(mailbox?: string) {
 
 function parseTicketDate(value: string) {
   return new Date(value.replace(" ", "T"));
+}
+
+function parseEmailAddresses(value: string) {
+  return value
+    .split(/[,;\n]/)
+    .map((address) => address.trim())
+    .filter(Boolean);
+}
+
+function isEmailAddress(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function textToHtml(value: string) {
+  return `<p>${escapeHtml(value).replaceAll("\n", "<br>")}</p>`;
+}
+
+function buildForwardedMessage(message: TicketThreadMessage) {
+  const header = [
+    "---------- 转发邮件 ----------",
+    `发件人：${message.from}`,
+    `日期：${message.sentAt}`,
+    `主题：${message.subject}`,
+    `收件人：${message.to}`,
+  ];
+  const text = [...header, "", message.body].join("\n");
+  const originalHtml = message.bodyHtml
+    ? sanitizeRichTextHtml(message.bodyHtml)
+    : textToHtml(message.body);
+  const html = [
+    "<p><br></p>",
+    "<blockquote>",
+    ...header.map((line) => `<p>${escapeHtml(line)}</p>`),
+    originalHtml,
+    "</blockquote>",
+  ].join("");
+  return { text, html };
 }
 
 function sanitizeRichTextHtml(html: string) {

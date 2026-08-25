@@ -11,12 +11,14 @@ import {
   BookOpen,
   Inbox,
   User,
+  UserCog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { to: "/", label: "工作台", icon: MessageSquare },
   { to: "/tickets", label: "工单", icon: Inbox },
+  { to: "/admin", label: "管理员", icon: UserCog },
   { to: "/capacity", label: "接待配置", icon: Gauge },
   { to: "/knowledge", label: "知识库", icon: BookOpen },
   { to: "/stats", label: "接待统计", icon: BarChart3 },
@@ -34,7 +36,8 @@ export function AppSidebar() {
   const { pathname } = useLocation();
   const [agentStatus, setAgentStatus] = useState<(typeof agentStatuses)[number]["value"]>("idle");
   const [showAgentStatus, setShowAgentStatus] = useState(false);
-  const currentAgentStatus = agentStatuses.find((status) => status.value === agentStatus) ?? agentStatuses[0];
+  const currentAgentStatus =
+    agentStatuses.find((status) => status.value === agentStatus) ?? agentStatuses[0];
 
   return (
     <aside className="flex h-screen w-[72px] flex-col items-center bg-gradient-sidebar text-sidebar-foreground shadow-elegant">
