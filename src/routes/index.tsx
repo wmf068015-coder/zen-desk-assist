@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SessionList } from "@/components/SessionList";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 
 const CUSTOMER_REMARK_PREFIX = "zen-desk-assist:customer-note:";
+const DEMO_READ_RECEIPT_DELAY_MS = 1200;
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -36,9 +37,51 @@ function Index() {
       sessions.map((session) => [session.id, getLatestCustomerMessage(session)?.id] as const),
     ),
   );
+  const readReceiptTimersRef = useRef<number[]>([]);
 
   const active = sessions.find((s) => s.id === activeId) ?? sessions[0];
   const revealedOrder = getRevealedOrder(active);
+
+  const selectSession = useCallback((id: string) => {
+    setActiveId(id);
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === id && session.unread > 0 ? { ...session, unread: 0 } : session,
+      ),
+    );
+  }, []);
+
+  const scheduleDemoReadReceipt = (sessionId: string, messageId: string) => {
+    const timer = window.setTimeout(() => {
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === sessionId
+            ? {
+                ...session,
+                messages: session.messages.map((message) =>
+                  message.id === messageId &&
+                  (message.sender === "agent" || message.sender === "ai")
+                    ? { ...message, readState: "read" as const }
+                    : message,
+                ),
+              }
+            : session,
+        ),
+      );
+    }, DEMO_READ_RECEIPT_DELAY_MS);
+    readReceiptTimersRef.current.push(timer);
+  };
+
+  useEffect(() => {
+    selectSession(activeId);
+  }, [activeId, selectSession]);
+
+  useEffect(
+    () => () => {
+      readReceiptTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!("Notification" in window) || Notification.permission !== "default") return;
@@ -83,7 +126,7 @@ function Index() {
         action: {
           label: "查看",
           onClick: () => {
-            setActiveId(session.id);
+            selectSession(session.id);
             window.focus();
           },
         },
@@ -101,14 +144,14 @@ function Index() {
         });
         notification.onclick = () => {
           window.focus();
-          setActiveId(session.id);
+          selectSession(session.id);
           notification.close();
         };
       }
     });
 
     previousCustomerMessageIdsRef.current = nextIds;
-  }, [activeId, sessions]);
+  }, [activeId, selectSession, sessions]);
 
   const takeover = (id: string) => {
     setSessions((prev) =>
@@ -204,6 +247,7 @@ function Index() {
   };
 
   const sendMessage = (id: string, content: string) => {
+    const messageId = `m${Date.now()}`;
     setSessions((prev) =>
       prev.map((s) =>
         s.id === id
@@ -214,7 +258,7 @@ function Index() {
               messages: [
                 ...s.messages,
                 {
-                  id: `m${Date.now()}`,
+                  id: messageId,
                   sender: "agent" as const,
                   type: "text" as const,
                   content,
@@ -223,12 +267,14 @@ function Index() {
                     minute: "2-digit",
                   }),
                   senderName: "我",
+                  readState: "unread" as const,
                 },
               ],
             }
           : s,
       ),
     );
+    scheduleDemoReadReceipt(id, messageId);
   };
 
   const sendProduct = (id: string, product: BrowsingProduct) => {
@@ -249,6 +295,7 @@ function Index() {
       content: mediaUrl,
       fileName: file.name,
       fileSize: formatFileSize(file.size),
+      readState: "unread",
       time: new Date().toLocaleTimeString("zh-CN", {
         hour: "2-digit",
         minute: "2-digit",
@@ -267,6 +314,7 @@ function Index() {
           : session,
       ),
     );
+    scheduleDemoReadReceipt(id, message.id);
     toast.success("视频已发送", { description: file.name });
 
     try {
@@ -376,7 +424,7 @@ function Index() {
       <SessionList
         sessions={sessions}
         activeId={active.id}
-        onSelect={setActiveId}
+        onSelect={selectSession}
         maxCapacity={maxCapacity}
         onCapacityChange={setMaxCapacity}
       />
@@ -432,17 +480,21 @@ function getLatestCustomerMessage(session: Session) {
 }
 
 function applyStoredCustomerRemarks(sessionList: typeof initialSessions) {
-  if (typeof window === "undefined") return sessionList;
   return sessionList.map((session) => {
-    const storedRemark = window.localStorage
-      .getItem(getCustomerRemarkKey(session.customer.id))
-      ?.trim();
-    if (!storedRemark) return session;
+    const storedRemark =
+      typeof window === "undefined"
+        ? undefined
+        : window.localStorage.getItem(getCustomerRemarkKey(session.customer.id))?.trim();
     return {
       ...session,
+      messages: session.messages.map((message) =>
+        message.sender === "agent" || message.sender === "ai"
+          ? { ...message, readState: message.readState ?? ("read" as const) }
+          : message,
+      ),
       customer: {
         ...session.customer,
-        name: storedRemark.slice(0, 30),
+        name: storedRemark ? storedRemark.slice(0, 30) : session.customer.name,
       },
     };
   });

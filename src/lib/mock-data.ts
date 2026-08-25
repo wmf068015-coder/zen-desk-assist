@@ -3,6 +3,7 @@ export type Channel = "web" | "wechat" | "app" | "weibo" | "email";
 export type SessionTag = "presale" | "logistics" | "refund" | "complaint" | "tech" | "invalid";
 export type MessageSender = "customer" | "ai" | "agent" | "system";
 export type MessageType = "text" | "image" | "video" | "file" | "system";
+export type MessageReadState = "unread" | "read";
 
 export interface Message {
   id: string;
@@ -14,6 +15,7 @@ export interface Message {
   fileName?: string;
   fileSize?: string;
   formSubmissionId?: string;
+  readState?: MessageReadState;
 }
 
 export interface BrowsingProduct {

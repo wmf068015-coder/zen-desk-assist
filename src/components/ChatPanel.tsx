@@ -22,6 +22,8 @@ import {
   Copy,
   Undo2,
   CheckSquare,
+  Check,
+  CheckCheck,
   Pencil,
   PauseCircle,
   PlayCircle,
@@ -1079,6 +1081,22 @@ function MessageBubble({
             </div>
           )}
         </div>
+        {!isCustomer && message.readState && (
+          <div
+            className={cn(
+              "flex items-center justify-end gap-1 text-[10px] font-medium",
+              message.readState === "read" ? "text-primary" : "text-muted-foreground",
+            )}
+            aria-label={`消息状态：${message.readState === "read" ? "已读" : "未读"}`}
+          >
+            {message.readState === "read" ? (
+              <CheckCheck className="h-3 w-3" />
+            ) : (
+              <Check className="h-3 w-3" />
+            )}
+            {message.readState === "read" ? "已读" : "未读"}
+          </div>
+        )}
         {formSubmission && formOpen && <VisitorFormViewer form={formSubmission} />}
         {actionOpen && selectable && (
           <div className={cn("flex flex-wrap gap-1.5", !isCustomer && "justify-end")}>
