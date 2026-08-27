@@ -10,10 +10,12 @@ import {
   type Message,
   type Session,
 } from "@/lib/mock-data";
+import { Bell } from "lucide-react";
 import { toast } from "sonner";
 
 const CUSTOMER_REMARK_PREFIX = "zen-desk-assist:customer-note:";
 const DEMO_READ_RECEIPT_DELAY_MS = 1200;
+const DEMO_INCOMING_MESSAGE_DELAY_MS = 3000;
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -31,6 +33,7 @@ export const Route = createFileRoute("/")({
 function Index() {
   const [sessions, setSessions] = useState(() => applyStoredCustomerRemarks(initialSessions));
   const [activeId, setActiveId] = useState(sessions[0].id);
+  const activeIdRef = useRef(activeId);
   const [maxCapacity, setMaxCapacity] = useState(10);
   const previousCustomerMessageIdsRef = useRef(
     new Map(
@@ -43,6 +46,7 @@ function Index() {
   const revealedOrder = getRevealedOrder(active);
 
   const selectSession = useCallback((id: string) => {
+    activeIdRef.current = id;
     setActiveId(id);
     setSessions((current) =>
       current.map((session) =>
@@ -84,6 +88,50 @@ function Index() {
   );
 
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
+
+    const timer = window.setTimeout(() => {
+      const content = "您好，我的订单物流一直没有更新，可以帮我查一下吗？";
+      const messageId = `demo-incoming-${Date.now()}`;
+      setSessions((current) => {
+        const target = current.find(
+          (session) =>
+            session.id !== activeIdRef.current &&
+            session.status !== "ended" &&
+            session.status !== "timeout",
+        );
+        if (!target) return current;
+
+        return current.map((session) =>
+          session.id === target.id
+            ? {
+                ...session,
+                unread: session.unread + 1,
+                lastMessage: content,
+                lastTime: "刚刚",
+                messages: [
+                  ...session.messages,
+                  {
+                    id: messageId,
+                    sender: "customer" as const,
+                    type: "text" as const,
+                    content,
+                    time: new Date().toLocaleTimeString("zh-CN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }),
+                  },
+                ],
+              }
+            : session,
+        );
+      });
+    }, DEMO_INCOMING_MESSAGE_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     if (!("Notification" in window) || Notification.permission !== "default") return;
 
     const requestNotificationPermission = () => {
@@ -120,17 +168,27 @@ function Index() {
       if (isCurrentConversationVisible) return;
 
       const preview = getMessageContentText(latestCustomerMessage);
-      toast.info(`${session.customer.name} 发来新消息`, {
-        description: preview,
-        duration: 8000,
-        action: {
-          label: "查看",
-          onClick: () => {
-            selectSession(session.id);
-            window.focus();
-          },
+      toast.custom(
+        (toastId) => (
+          <button
+            type="button"
+            onClick={() => {
+              toast.dismiss(toastId);
+              selectSession(session.id);
+              window.focus();
+            }}
+            className="flex min-w-[220px] items-center gap-2.5 rounded-full border border-red-400/40 bg-red-600 px-4 py-3 text-left text-sm font-semibold text-white shadow-xl shadow-red-500/25 transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+            aria-label="收到一条新消息，点击查看"
+          >
+            <Bell className="h-4 w-4 shrink-0" />
+            收到一条新消息
+          </button>
+        ),
+        {
+          position: "bottom-right",
+          duration: 8000,
         },
-      });
+      );
 
       if (
         (document.visibilityState !== "visible" || !document.hasFocus()) &&
