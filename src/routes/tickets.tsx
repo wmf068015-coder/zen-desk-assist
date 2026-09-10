@@ -133,6 +133,7 @@ function TicketsPage() {
   const [previewAttachment, setPreviewAttachment] = useState<TicketAttachment | null>(null);
   const [replyDrafts, setReplyDrafts] = useState<Record<string, ReplyDraftState>>({});
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const replySectionRef = useRef<HTMLElement>(null);
   const importedTicketIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -182,6 +183,24 @@ function TicketsPage() {
     syncAssignments();
     return subscribeTicketAssignments(syncAssignments);
   }, []);
+
+  useEffect(() => {
+    if (!replyExpanded) return;
+
+    const collapseReplyOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || replySectionRef.current?.contains(target)) return;
+      if (
+        target.closest('[role="dialog"], button, a, input, select, textarea, [contenteditable]')
+      ) {
+        return;
+      }
+      setReplyExpanded(false);
+    };
+
+    document.addEventListener("pointerdown", collapseReplyOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", collapseReplyOnOutsideClick);
+  }, [replyExpanded]);
 
   const latestTimestamp = useMemo(
     () => Math.max(...tickets.map((ticket) => parseTicketDate(ticket.lastUpdatedAt).getTime())),
@@ -476,9 +495,6 @@ function TicketsPage() {
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-semibold">邮件工单</h1>
               </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {filteredTickets.length} 个回复链
-              </p>
             </div>
           </div>
 
@@ -645,6 +661,7 @@ function TicketsPage() {
           </div>
 
           <section
+            ref={replySectionRef}
             className={cn(
               "scrollbar-thin overflow-y-auto border-t bg-card px-5",
               replyExpanded ? "max-h-[520px] py-3" : "py-2",
@@ -1294,11 +1311,44 @@ function OrderStatusAttachmentPreview() {
 }
 
 function PdfAttachmentPreview({ attachment }: { attachment: TicketAttachment }) {
+  const metadata =
+    attachment.id === "att-invoice-nf24638"
+      ? {
+          eyebrow: "NEEWER CUSTOMER SERVICE",
+          title: "Facture NF24638",
+          reference: "Commande #NF24638",
+          customerEmail: "agramakovamaria@gmail.com",
+          receivedAt: "2026-09-09 20:21",
+          status: "Envoyée au client",
+          description: "Facture officielle jointe à la réponse envoyée à Mariia Ahramakova.",
+        }
+      : attachment.id === "att-mariia-order-details"
+        ? {
+            eyebrow: "NEEWER CUSTOMER SERVICE",
+            title: "Détails des commandes",
+            reference: "Commande #NF24638",
+            customerEmail: "agramakovamaria@gmail.com",
+            receivedAt: "2026-09-04 01:13",
+            status: "Pièce jointe client",
+            description:
+              "Document reçu avec la demande de factures pour les deux commandes d'éclairage.",
+          }
+        : {
+            eyebrow: "NEEWER CUSTOMER SERVICE",
+            title: "Verification Document",
+            reference: "Order #N210948",
+            customerEmail: "odwascanio@gmail.com",
+            receivedAt: "2026-08-18 09:18",
+            status: "Pending review",
+            description:
+              "This preview represents the verification attachment received in the customer email thread.",
+          };
+
   return (
     <div className="min-h-[520px] w-full max-w-lg bg-white p-10 text-slate-900 shadow-sm">
-      <p className="text-xs font-semibold text-slate-500">NEEWER CUSTOMER SERVICE</p>
-      <h3 className="mt-8 text-2xl font-semibold">Verification Document</h3>
-      <p className="mt-2 text-sm text-slate-500">Order #N210948</p>
+      <p className="text-xs font-semibold text-slate-500">{metadata.eyebrow}</p>
+      <h3 className="mt-8 text-2xl font-semibold">{metadata.title}</h3>
+      <p className="mt-2 text-sm text-slate-500">{metadata.reference}</p>
       <div className="mt-8 space-y-4 border-y py-6 text-sm">
         <div className="flex justify-between gap-6">
           <span className="text-slate-500">File</span>
@@ -1306,20 +1356,18 @@ function PdfAttachmentPreview({ attachment }: { attachment: TicketAttachment }) 
         </div>
         <div className="flex justify-between gap-6">
           <span className="text-slate-500">Customer email</span>
-          <span className="font-medium">odwascanio@gmail.com</span>
+          <span className="font-medium">{metadata.customerEmail}</span>
         </div>
         <div className="flex justify-between gap-6">
           <span className="text-slate-500">Received</span>
-          <span className="font-medium">2026-08-18 09:18</span>
+          <span className="font-medium">{metadata.receivedAt}</span>
         </div>
         <div className="flex justify-between gap-6">
           <span className="text-slate-500">Review status</span>
-          <span className="font-medium text-amber-700">Pending review</span>
+          <span className="font-medium text-amber-700">{metadata.status}</span>
         </div>
       </div>
-      <p className="mt-8 text-sm leading-6 text-slate-600">
-        This preview represents the verification attachment received in the customer email thread.
-      </p>
+      <p className="mt-8 text-sm leading-6 text-slate-600">{metadata.description}</p>
     </div>
   );
 }
@@ -1356,6 +1404,7 @@ function RichTextEditor({
   onChange: (value: { html: string; text: string }) => void;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const [editorExpanded, setEditorExpanded] = useState(false);
   const visuallyEmpty = !value.replace(/<[^>]+>/g, "").replace(/&nbsp;|\s/g, "");
 
   useEffect(() => {
@@ -1483,8 +1532,21 @@ function RichTextEditor({
           disabled={disabled}
           onAction={() => runCommand("redo")}
         />
+        <span className="min-w-2 flex-1" />
+        <EditorToolbarButton
+          label={editorExpanded ? "收回正文输入框" : "展开正文输入框"}
+          icon={
+            editorExpanded ? (
+              <Minimize2 className="h-3.5 w-3.5" />
+            ) : (
+              <Maximize2 className="h-3.5 w-3.5" />
+            )
+          }
+          disabled={disabled}
+          onAction={() => setEditorExpanded((expanded) => !expanded)}
+        />
       </div>
-      <div className="relative">
+      <div className="relative" onPointerDown={() => !disabled && setEditorExpanded(true)}>
         {visuallyEmpty && (
           <span className="pointer-events-none absolute left-3 top-2 text-sm text-muted-foreground">
             {placeholder}
@@ -1499,7 +1561,10 @@ function RichTextEditor({
           aria-multiline="true"
           onInput={syncValue}
           onBlur={syncValue}
-          className="scrollbar-thin min-h-24 max-h-44 overflow-y-auto px-3 py-2 text-sm leading-6 outline-none disabled:opacity-50 [&_a]:text-primary [&_a]:underline [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-bold [&_h3]:text-base [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+          className={cn(
+            "scrollbar-thin overflow-y-auto px-3 py-2 text-sm leading-6 outline-none transition-[min-height,max-height] duration-200 disabled:opacity-50 [&_a]:text-primary [&_a]:underline [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-bold [&_h3]:text-base [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5",
+            editorExpanded ? "min-h-40 max-h-[40vh]" : "min-h-16 max-h-24",
+          )}
         />
       </div>
     </div>
