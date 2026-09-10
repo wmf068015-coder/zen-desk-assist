@@ -79,7 +79,6 @@ export interface SendTicketEmailInput {
   attachments?: TicketAttachment[];
   from?: string;
   cc?: string[];
-  closeAfterSend?: boolean;
   action?: "reply" | "forward";
 }
 
@@ -141,7 +140,7 @@ export const initialSupportTickets: SupportTicket[] = [
     mailbox: supportMailbox,
     threadId: "TH-JANE-210948",
     unread: true,
-    assignee: "客服小美",
+    assignee: "Marzia",
     messages: [
       {
         id: "mail-widget-0042",
@@ -191,7 +190,7 @@ export const initialSupportTickets: SupportTicket[] = [
     mailbox: supportMailbox,
     threadId: "TH-ODW-N210948",
     unread: true,
-    assignee: "客服小陈",
+    assignee: "Kevin",
     messages: [
       {
         id: "mail-erp-23901",
@@ -266,7 +265,7 @@ export const initialSupportTickets: SupportTicket[] = [
     mailbox: supportMailbox,
     threadId: "TH-MARIA-REFUND",
     unread: false,
-    assignee: "客服小美",
+    assignee: "吴金香",
     messages: [
       {
         id: "mail-widget-0031",
@@ -457,13 +456,8 @@ export function sendTicketEmail(
   return {
     ...ticket,
     contact: action === "forward" ? ticket.contact : to,
-    status: input.closeAfterSend
-      ? "closed"
-      : action === "forward"
-        ? ticket.status === "new"
-          ? "processing"
-          : ticket.status
-        : "replied",
+    status:
+      action === "forward" ? (ticket.status === "new" ? "processing" : ticket.status) : "replied",
     unread: false,
     lastUpdatedAt: sentAt,
     replies: [...ticket.replies, reply],
@@ -489,6 +483,19 @@ export function completeTicketWithoutReply(
     status: "closed",
     unread: false,
     lastUpdatedAt: completedAt,
+  };
+}
+
+export function markTicketProcessing(
+  ticket: SupportTicket,
+  updatedAt = formatDateTime(new Date()),
+): SupportTicket {
+  if (ticket.status === "processing") return ticket;
+  return {
+    ...ticket,
+    status: "processing",
+    unread: false,
+    lastUpdatedAt: updatedAt,
   };
 }
 

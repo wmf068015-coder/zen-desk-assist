@@ -6,6 +6,7 @@ import {
   completeTicketWithoutReply,
   getTicketReplyStatus,
   getTicketMessages,
+  markTicketProcessing,
   retryFailedTicketEmail,
   sendTicketEmail,
 } from "./ticket-replies.ts";
@@ -101,7 +102,7 @@ describe("ticket email replies", () => {
     );
   });
 
-  it("sends cc recipients and marks the ticket complete when requested", () => {
+  it("sends cc recipients while keeping the ticket in progress", () => {
     const updated = sendTicketEmail(
       baseTicket,
       {
@@ -109,15 +110,23 @@ describe("ticket email replies", () => {
         cc: ["warehouse@example.com"],
         subject: "Re: 订单迟迟未发货",
         body: "订单已发出，本次处理完毕。",
-        closeAfterSend: true,
       },
       "2026-05-11 11:00",
     );
 
     const latestMessage = getTicketMessages(updated).at(-1);
-    assert.equal(updated.status, "closed");
+    assert.equal(updated.status, "replied");
     assert.deepEqual(latestMessage?.cc, ["warehouse@example.com"]);
     assert.equal(getTicketReplyStatus(updated), "sent");
+  });
+
+  it("reopens a completed ticket as processing without sending an email", () => {
+    const completed = completeTicketWithoutReply(baseTicket, "2026-05-11 11:00");
+    const reopened = markTicketProcessing(completed, "2026-05-11 11:15");
+
+    assert.equal(reopened.status, "processing");
+    assert.equal(reopened.lastUpdatedAt, "2026-05-11 11:15");
+    assert.equal(getTicketMessages(reopened).length, getTicketMessages(completed).length);
   });
 
   it("identifies a failed email and supports a direct retry", () => {

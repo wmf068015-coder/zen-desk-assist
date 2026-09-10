@@ -16,6 +16,7 @@ import {
   getTicketReplyStatus,
   getTicketMessages,
   initialSupportTickets,
+  markTicketProcessing,
   retryFailedTicketEmail,
   sendTicketEmail,
   TICKET_STATUS_LABELS,
@@ -97,7 +98,6 @@ interface ReplyDraftState {
   body: string;
   bodyHtml: string;
   attachments: TicketAttachment[];
-  closeAfterSend: boolean;
 }
 
 const initialForwardAddresses = [
@@ -286,14 +286,11 @@ function TicketsPage() {
         body: "",
         bodyHtml: "",
         attachments: [],
-        closeAfterSend: false,
       })
     : null;
   const threadAttachments = activeMessages.flatMap((message) =>
     message.attachments.map((attachment) => ({ attachment, message })),
   );
-  const unreadCount = tickets.filter((ticket) => ticket.unread).length;
-
   const updateTicket = (ticketId: string, updater: (ticket: SupportTicket) => SupportTicket) => {
     setTickets((current) =>
       current.map((ticket) => (ticket.id === ticketId ? updater(ticket) : ticket)),
@@ -339,7 +336,6 @@ function TicketsPage() {
           bodyHtml: sanitizeRichTextHtml(activeDraft.bodyHtml),
           attachments: activeDraft.attachments,
           cc: parseEmailAddresses(activeDraft.cc),
-          closeAfterSend: activeDraft.closeAfterSend,
         },
         sentAt,
       );
@@ -353,27 +349,38 @@ function TicketsPage() {
           body: "",
           bodyHtml: "",
           attachments: [],
-          closeAfterSend: false,
         },
       }));
       setReplyExpanded(false);
-      toast.success(activeDraft.closeAfterSend ? "邮件已发送，工单已处理完毕" : "邮件已发送", {
-        description: activeDraft.closeAfterSend
-          ? `已发送至 ${updated.contact}，本回复链已结束处理`
-          : `已发送至 ${updated.contact}，后续回复会进入当前回复链`,
+      toast.success("邮件已发送", {
+        description: `已发送至 ${updated.contact}，后续回复会进入当前回复链`,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "邮件发送失败，请重试");
     }
   };
 
-  const completeWithoutReply = () => {
+  const markAsProcessing = () => {
     if (!activeTicket) return;
+    if (activeTicket.status === "processing") {
+      toast.info("当前工单已处于持续处理状态");
+      return;
+    }
+    const updated = markTicketProcessing(activeTicket);
+    updateTicket(activeTicket.id, () => updated);
+    toast.success("已标记为持续处理");
+  };
+
+  const markAsCompleted = () => {
+    if (!activeTicket) return;
+    if (activeTicket.status === "closed") {
+      toast.info("当前工单已处理完毕");
+      return;
+    }
     const updated = completeTicketWithoutReply(activeTicket);
     updateTicket(activeTicket.id, () => updated);
-    setReplyExpanded(false);
     toast.success("工单已处理完毕", {
-      description: "本次未发送邮件，原回复状态保持不变",
+      description: "未发送邮件，当前草稿和原回复状态保持不变",
     });
   };
 
@@ -452,7 +459,6 @@ function TicketsPage() {
         body: message.body,
         bodyHtml: message.bodyHtml ?? textToHtml(message.body),
         attachments: message.attachments,
-        closeAfterSend: false,
       },
     }));
     setReplyExpanded(true);
@@ -465,23 +471,14 @@ function TicketsPage() {
 
       <section className="flex h-full w-[420px] shrink-0 flex-col border-r bg-card">
         <header className="border-b px-4 pb-3 pt-4">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-semibold">邮件工单</h1>
-                {unreadCount > 0 && (
-                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold text-destructive-foreground">
-                    {unreadCount}
-                  </span>
-                )}
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {filteredTickets.length} 个回复链
               </p>
-            </div>
-            <div className="inline-flex items-center gap-1.5 text-xs text-success">
-              <span className="h-2 w-2 rounded-full bg-success" />
-              邮箱同步正常
             </div>
           </div>
 
@@ -833,28 +830,41 @@ function TicketsPage() {
                       </button>
                       <span className="text-[10px] text-muted-foreground">最多 5 个附件</span>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={activeDraft.closeAfterSend}
-                          onChange={(event) =>
-                            updateDraft({ closeAfterSend: event.target.checked })
-                          }
-                          disabled={activeTicket.status === "closed"}
-                          className="h-3.5 w-3.5 accent-primary"
-                        />
-                        发送后标记处理完毕
-                      </label>
-                      <button
-                        type="button"
-                        onClick={completeWithoutReply}
-                        disabled={activeTicket.status === "closed"}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-md border border-success/35 px-3 text-xs font-medium text-success hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <div
+                        role="group"
+                        aria-label="设置工单处理状态"
+                        className="inline-flex rounded-md border bg-muted/30 p-0.5"
                       >
-                        <CheckCircle2 className="h-4 w-4" />
-                        无需回复，处理完毕
-                      </button>
+                        <button
+                          type="button"
+                          onClick={markAsProcessing}
+                          aria-pressed={activeTicket.status !== "closed"}
+                          className={cn(
+                            "inline-flex h-8 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors",
+                            activeTicket.status !== "closed"
+                              ? "bg-background text-info shadow-sm"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          标记持续处理
+                        </button>
+                        <button
+                          type="button"
+                          onClick={markAsCompleted}
+                          aria-pressed={activeTicket.status === "closed"}
+                          className={cn(
+                            "inline-flex h-8 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors",
+                            activeTicket.status === "closed"
+                              ? "bg-background text-success shadow-sm"
+                              : "text-muted-foreground hover:text-success",
+                          )}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          标记处理完毕
+                        </button>
+                      </div>
                       <button
                         type="button"
                         onClick={sendReply}
@@ -1042,7 +1052,7 @@ function TicketListItem({
 
         <dt className="text-[10px] text-muted-foreground">状态</dt>
         <dd className="flex flex-wrap gap-1">
-          <ReadStatusPill unread={Boolean(ticket.unread)} />
+          <ReadStatusPill unread={Boolean(ticket.unread)} prominent />
           <TicketStatusPill status={ticket.status} />
         </dd>
         <dt className="text-[10px] text-muted-foreground">回复状态</dt>
@@ -1569,15 +1579,29 @@ function EmailSignature({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function ReadStatusPill({ unread }: { unread: boolean }) {
+function ReadStatusPill({ unread, prominent = false }: { unread: boolean; prominent?: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-semibold",
-        unread ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+        "inline-flex items-center gap-1 rounded-md font-semibold",
+        prominent ? "px-2.5 py-1 text-[11px] shadow-sm" : "px-1.5 py-0.5 text-[9px]",
+        unread
+          ? prominent
+            ? "bg-destructive/12 text-destructive ring-1 ring-inset ring-destructive/20"
+            : "bg-primary/10 text-primary"
+          : prominent
+            ? "bg-muted text-foreground/70 ring-1 ring-inset ring-border"
+            : "bg-muted text-muted-foreground",
       )}
+      aria-label={`消息状态：${unread ? "未读" : "已读"}`}
     >
-      {unread && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+      <span
+        className={cn(
+          "h-2 w-2 rounded-full",
+          unread ? (prominent ? "bg-destructive" : "bg-primary") : "bg-muted-foreground/60",
+        )}
+        aria-hidden="true"
+      />
       {unread ? "未读" : "已读"}
     </span>
   );

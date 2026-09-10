@@ -31,6 +31,8 @@ import {
   BarChart3,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   CircleDashed,
   Headphones,
   Inbox,
@@ -57,6 +59,7 @@ export const Route = createFileRoute("/admin")({
 });
 
 type AssignmentFilter = "all" | "unassigned" | (typeof SUPPORT_AGENTS)[number];
+type AssignmentTimeRange = "all" | "1" | "7" | "30" | "90" | "180" | "custom";
 type AdminView = "assignments" | "accounts";
 type AgentWorkload = {
   account: SupportAccount;
@@ -67,11 +70,45 @@ type AgentWorkload = {
   completionRate: number;
 };
 
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const ASSIGNMENT_PAGE_SIZE = 50;
+
+function parseAdminDate(value: string) {
+  const timestamp = new Date(value.replace(" ", "T")).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getTicketReceivedAt(ticket: SupportTicket) {
+  return getTicketMessages(ticket).reduce((latest, message) => {
+    if (message.direction !== "inbound") return latest;
+    return parseAdminDate(message.sentAt) > parseAdminDate(latest) ? message.sentAt : latest;
+  }, ticket.submittedAt);
+}
+
+function formatDateInput(timestamp: number) {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const initialLatestTicketTimestamp = Math.max(
+  0,
+  ...initialSupportTickets.map((ticket) => parseAdminDate(getTicketReceivedAt(ticket))),
+);
+const initialCustomEndDate = formatDateInput(initialLatestTicketTimestamp);
+const initialCustomStartDate = formatDateInput(initialLatestTicketTimestamp - 30 * DAY_IN_MS);
+
 function AdminPage() {
   const [tickets, setTickets] = useState(initialSupportTickets);
   const [accounts, setAccounts] = useState(DEFAULT_SUPPORT_ACCOUNTS);
   const [activeView, setActiveView] = useState<AdminView>("assignments");
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all");
+  const [assignmentTimeRange, setAssignmentTimeRange] = useState<AssignmentTimeRange>("all");
+  const [customStartDate, setCustomStartDate] = useState(initialCustomStartDate);
+  const [customEndDate, setCustomEndDate] = useState(initialCustomEndDate);
+  const [assignmentPage, setAssignmentPage] = useState(1);
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [batchAssignee, setBatchAssignee] = useState<string>(SUPPORT_AGENTS[0]);
@@ -91,24 +128,77 @@ function AdminPage() {
     return subscribeSupportAccounts(syncAccounts);
   }, []);
 
+  const ticketRows = useMemo(
+    () =>
+      tickets.map((ticket) => {
+        const receivedAt = getTicketReceivedAt(ticket);
+        return { ticket, receivedAt, timestamp: parseAdminDate(receivedAt) };
+      }),
+    [tickets],
+  );
+  const latestTicketTimestamp = useMemo(
+    () => Math.max(0, ...ticketRows.map((row) => row.timestamp)),
+    [ticketRows],
+  );
+  const customRangeError =
+    assignmentTimeRange !== "custom"
+      ? ""
+      : !customStartDate || !customEndDate
+        ? "请选择完整的开始和结束日期"
+        : customStartDate > customEndDate
+          ? "开始日期不能晚于结束日期"
+          : "";
   const filteredTickets = useMemo(() => {
     const keyword = query.trim().toLowerCase();
-    return tickets.filter((ticket) => {
-      if (assignmentFilter === "unassigned" && ticket.assignee) return false;
-      if (
-        assignmentFilter !== "all" &&
-        assignmentFilter !== "unassigned" &&
-        ticket.assignee !== assignmentFilter
-      ) {
-        return false;
-      }
-      if (!keyword) return true;
-      return [ticket.id, ticket.title, ticket.contact, ticket.assignee ?? ""]
-        .join(" ")
-        .toLowerCase()
-        .includes(keyword);
-    });
-  }, [assignmentFilter, query, tickets]);
+    const customStart = new Date(`${customStartDate}T00:00:00`).getTime();
+    const customEnd = new Date(`${customEndDate}T23:59:59`).getTime();
+    const cutoff =
+      assignmentTimeRange === "all" || assignmentTimeRange === "custom"
+        ? 0
+        : latestTicketTimestamp - Number(assignmentTimeRange) * DAY_IN_MS;
+
+    return ticketRows
+      .filter(({ ticket, timestamp }) => {
+        if (assignmentTimeRange === "custom") {
+          if (customRangeError || timestamp < customStart || timestamp > customEnd) return false;
+        } else if (assignmentTimeRange !== "all" && timestamp < cutoff) {
+          return false;
+        }
+        if (assignmentFilter === "unassigned" && ticket.assignee) return false;
+        if (
+          assignmentFilter !== "all" &&
+          assignmentFilter !== "unassigned" &&
+          ticket.assignee !== assignmentFilter
+        ) {
+          return false;
+        }
+        if (!keyword) return true;
+        return [ticket.id, ticket.title, ticket.contact, ticket.assignee ?? ""]
+          .join(" ")
+          .toLowerCase()
+          .includes(keyword);
+      })
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .map(({ ticket }) => ticket);
+  }, [
+    assignmentFilter,
+    assignmentTimeRange,
+    customEndDate,
+    customRangeError,
+    customStartDate,
+    latestTicketTimestamp,
+    query,
+    ticketRows,
+  ]);
+  const totalAssignmentPages = Math.max(
+    1,
+    Math.ceil(filteredTickets.length / ASSIGNMENT_PAGE_SIZE),
+  );
+  const currentAssignmentPage = Math.min(assignmentPage, totalAssignmentPages);
+  const paginatedTickets = useMemo(() => {
+    const start = (currentAssignmentPage - 1) * ASSIGNMENT_PAGE_SIZE;
+    return filteredTickets.slice(start, start + ASSIGNMENT_PAGE_SIZE);
+  }, [currentAssignmentPage, filteredTickets]);
 
   const unassignedCount = tickets.filter((ticket) => !ticket.assignee).length;
   const processingCount = tickets.filter((ticket) => ticket.status !== "closed").length;
@@ -135,7 +225,7 @@ function AdminPage() {
       }),
     [accounts, tickets],
   );
-  const visibleIds = filteredTickets.map((ticket) => ticket.id);
+  const visibleIds = paginatedTickets.map((ticket) => ticket.id);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((ticketId) => selectedIdSet.has(ticketId));
@@ -145,6 +235,10 @@ function AdminPage() {
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = someVisibleSelected;
   }, [someVisibleSelected]);
+
+  useEffect(() => {
+    setAssignmentPage((current) => Math.min(current, totalAssignmentPages));
+  }, [totalAssignmentPages]);
 
   const assignTicket = (ticket: SupportTicket, value: string) => {
     const assignee = value === "unassigned" ? undefined : value;
@@ -186,11 +280,19 @@ function AdminPage() {
 
   const changeAssignmentFilter = (value: AssignmentFilter) => {
     setAssignmentFilter(value);
+    setAssignmentPage(1);
+    setSelectedIds([]);
+  };
+
+  const changeAssignmentTimeRange = (value: AssignmentTimeRange) => {
+    setAssignmentTimeRange(value);
+    setAssignmentPage(1);
     setSelectedIds([]);
   };
 
   const changeQuery = (value: string) => {
     setQuery(value);
+    setAssignmentPage(1);
     setSelectedIds([]);
   };
 
@@ -305,169 +407,244 @@ function AdminPage() {
                 <AssignmentStat label="处理完毕" value={completedCount} icon={<CheckCircle2 />} />
               </dl>
 
-              <section className="overflow-hidden rounded-md border bg-card">
-                <div className="flex items-center justify-between border-b px-4 py-3">
-                  <div>
-                    <h2 className="text-sm font-semibold">客服处理概览</h2>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">按当前工单处理人统计</p>
+              <div className="grid min-w-0 items-start gap-4 md:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.6fr)]">
+                <section className="min-w-0 overflow-hidden rounded-md border bg-card">
+                  <div className="flex items-center justify-between border-b px-4 py-3">
+                    <div>
+                      <h2 className="text-sm font-semibold">客服处理概览</h2>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        按当前工单处理人统计
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      {accounts.length} 个客服账号
+                    </span>
                   </div>
-                  <span className="text-[11px] text-muted-foreground">
-                    {accounts.length} 个客服账号
-                  </span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[880px] table-fixed text-left">
-                    <thead className="bg-muted/40 text-[11px] text-muted-foreground">
-                      <tr>
-                        <th className="w-[20%] px-4 py-2.5 font-medium">客服</th>
-                        <th className="w-[15%] px-4 py-2.5 font-medium">账号类型</th>
-                        <th className="w-[13%] px-4 py-2.5 font-medium">在线状态</th>
-                        <th className="w-[10%] px-4 py-2.5 text-center font-medium">已分配</th>
-                        <th className="w-[11%] px-4 py-2.5 text-center font-medium">持续处理</th>
-                        <th className="w-[11%] px-4 py-2.5 text-center font-medium">处理完毕</th>
-                        <th className="w-[10%] px-4 py-2.5 text-center font-medium">未读</th>
-                        <th className="w-[10%] px-4 py-2.5 text-center font-medium">完成率</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {workloadRows.map((row) => (
-                        <AgentWorkloadRow key={row.account.id} row={row} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
+                  <div className="max-h-[680px] divide-y overflow-y-auto">
+                    {workloadRows.map((row) => (
+                      <AgentWorkloadItem key={row.account.id} row={row} />
+                    ))}
+                  </div>
+                </section>
 
-              <section className="overflow-hidden rounded-md border bg-card">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-                  <div>
-                    <h2 className="text-sm font-semibold">工单处理人分配</h2>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      当前显示 {filteredTickets.length} 条工单
-                    </p>
+                <section className="min-w-0 overflow-hidden rounded-md border bg-card">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+                    <div>
+                      <h2 className="text-sm font-semibold">工单处理人分配</h2>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        当前显示 {filteredTickets.length} 条工单 · 收件时间由近到远
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <select
+                        value={assignmentTimeRange}
+                        onChange={(event) =>
+                          changeAssignmentTimeRange(event.target.value as AssignmentTimeRange)
+                        }
+                        aria-label="按收件时间筛选"
+                        className="h-9 rounded-md border bg-background px-2.5 text-xs outline-none focus:border-primary"
+                      >
+                        <option value="all">全部时间</option>
+                        <option value="1">近 24 小时</option>
+                        <option value="7">近 7 天</option>
+                        <option value="30">近 1 个月</option>
+                        <option value="90">近 3 个月</option>
+                        <option value="180">近 6 个月</option>
+                        <option value="custom">自定义时间</option>
+                      </select>
+                      <select
+                        value={assignmentFilter}
+                        onChange={(event) =>
+                          changeAssignmentFilter(event.target.value as AssignmentFilter)
+                        }
+                        aria-label="按处理人筛选"
+                        className="h-9 rounded-md border bg-background px-2.5 text-xs outline-none focus:border-primary"
+                      >
+                        <option value="all">全部处理人</option>
+                        <option value="unassigned">未分配</option>
+                        {SUPPORT_AGENTS.map((agent) => (
+                          <option key={agent} value={agent}>
+                            {agent}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="relative w-72">
+                        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          value={query}
+                          onChange={(event) => changeQuery(event.target.value)}
+                          placeholder="搜索工单号、主题、邮箱或处理人"
+                          className="h-9 w-full rounded-md border bg-background pl-8 pr-8 text-xs outline-none focus:border-primary"
+                        />
+                        {query && (
+                          <button
+                            type="button"
+                            onClick={() => changeQuery("")}
+                            aria-label="清空搜索"
+                            className="absolute right-1.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={assignmentFilter}
-                      onChange={(event) =>
-                        changeAssignmentFilter(event.target.value as AssignmentFilter)
-                      }
-                      aria-label="按处理人筛选"
-                      className="h-9 rounded-md border bg-background px-2.5 text-xs outline-none focus:border-primary"
-                    >
-                      <option value="all">全部处理人</option>
-                      <option value="unassigned">未分配</option>
-                      {SUPPORT_AGENTS.map((agent) => (
-                        <option key={agent} value={agent}>
-                          {agent}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="relative w-72">
-                      <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        value={query}
-                        onChange={(event) => changeQuery(event.target.value)}
-                        placeholder="搜索工单号、主题、邮箱或处理人"
-                        className="h-9 w-full rounded-md border bg-background pl-8 pr-8 text-xs outline-none focus:border-primary"
-                      />
-                      {query && (
+
+                  {assignmentTimeRange === "custom" && (
+                    <div className="flex flex-wrap items-center gap-2 border-b bg-muted/15 px-4 py-2">
+                      <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
+                        开始日期
+                        <input
+                          type="date"
+                          value={customStartDate}
+                          max={customEndDate || undefined}
+                          onChange={(event) => {
+                            setCustomStartDate(event.target.value);
+                            setAssignmentPage(1);
+                            setSelectedIds([]);
+                          }}
+                          className="h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                        />
+                      </label>
+                      <span className="text-xs text-muted-foreground">至</span>
+                      <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
+                        结束日期
+                        <input
+                          type="date"
+                          value={customEndDate}
+                          min={customStartDate || undefined}
+                          onChange={(event) => {
+                            setCustomEndDate(event.target.value);
+                            setAssignmentPage(1);
+                            setSelectedIds([]);
+                          }}
+                          className="h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                        />
+                      </label>
+                      {customRangeError && (
+                        <span className="text-[11px] font-medium text-destructive">
+                          {customRangeError}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b bg-muted/15 px-4 py-2">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="font-medium">已选择 {selectedIds.length} 项</span>
+                      {selectedIds.length > 0 && (
                         <button
                           type="button"
-                          onClick={() => changeQuery("")}
-                          aria-label="清空搜索"
-                          className="absolute right-1.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                          onClick={() => setSelectedIds([])}
+                          className="inline-flex h-7 items-center gap-1 rounded px-2 text-muted-foreground hover:bg-muted hover:text-foreground"
                         >
                           <X className="h-3.5 w-3.5" />
+                          清空选择
                         </button>
                       )}
                     </div>
-                  </div>
-                </div>
-
-                <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b bg-muted/15 px-4 py-2">
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="font-medium">已选择 {selectedIds.length} 项</span>
-                    {selectedIds.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={batchAssignee}
+                        onChange={(event) => setBatchAssignee(event.target.value)}
+                        aria-label="选择批量分配处理人"
+                        className="h-8 min-w-32 rounded-md border bg-background px-2 text-xs outline-none focus:border-primary"
+                      >
+                        <option value="unassigned">未分配</option>
+                        {SUPPORT_AGENTS.map((agent) => (
+                          <option key={agent} value={agent}>
+                            {agent}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="button"
-                        onClick={() => setSelectedIds([])}
-                        className="inline-flex h-7 items-center gap-1 rounded px-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onClick={assignSelectedTickets}
+                        disabled={selectedIds.length === 0}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        <X className="h-3.5 w-3.5" />
-                        清空选择
+                        <UserCog className="h-3.5 w-3.5" />
+                        批量分配
                       </button>
+                    </div>
+                  </div>
+
+                  <div className="max-h-[1200px] overflow-y-auto">
+                    <table className="w-full table-fixed text-left">
+                      <thead className="sticky top-0 z-10 bg-muted text-[11px] text-muted-foreground">
+                        <tr>
+                          <th className="w-[9%] px-2 py-2.5 font-medium">
+                            <input
+                              ref={selectAllRef}
+                              type="checkbox"
+                              checked={allVisibleSelected}
+                              onChange={toggleAllVisible}
+                              disabled={visibleIds.length === 0}
+                              aria-label="全选当前页"
+                              className="h-4 w-4 rounded border-border accent-primary"
+                            />
+                          </th>
+                          <th className="w-[31%] px-2 py-2.5 font-medium">工单</th>
+                          <th className="w-[22%] px-2 py-2.5 font-medium">买家邮箱</th>
+                          <th className="w-[14%] px-2 py-2.5 font-medium">来源</th>
+                          <th className="w-[24%] px-2 py-2.5 font-medium">处理人</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {paginatedTickets.map((ticket) => (
+                          <TicketAssignmentRow
+                            key={ticket.id}
+                            ticket={ticket}
+                            selected={selectedIdSet.has(ticket.id)}
+                            onToggle={() => toggleTicket(ticket.id)}
+                            onAssign={(value) => assignTicket(ticket, value)}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {filteredTickets.length === 0 && (
+                    <div className="flex h-44 flex-col items-center justify-center text-sm text-muted-foreground">
+                      <UserCog className="mb-2 h-6 w-6 opacity-50" />
+                      当前条件下没有工单
+                    </div>
+                  )}
+
+                  <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-t bg-card px-4 py-2.5 text-[11px] text-muted-foreground">
+                    <span>共 {filteredTickets.length} 条</span>
+                    {totalAssignmentPages > 1 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAssignmentPage((page) => Math.max(1, page - 1))}
+                          disabled={currentAssignmentPage === 1}
+                          aria-label="上一页"
+                          title="上一页"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-35"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <span className="min-w-16 text-center text-xs tabular-nums text-foreground">
+                          {currentAssignmentPage} / {totalAssignmentPages}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAssignmentPage((page) => Math.min(totalAssignmentPages, page + 1))
+                          }
+                          disabled={currentAssignmentPage === totalAssignmentPages}
+                          aria-label="下一页"
+                          title="下一页"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-35"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={batchAssignee}
-                      onChange={(event) => setBatchAssignee(event.target.value)}
-                      aria-label="选择批量分配处理人"
-                      className="h-8 min-w-32 rounded-md border bg-background px-2 text-xs outline-none focus:border-primary"
-                    >
-                      <option value="unassigned">未分配</option>
-                      {SUPPORT_AGENTS.map((agent) => (
-                        <option key={agent} value={agent}>
-                          {agent}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={assignSelectedTickets}
-                      disabled={selectedIds.length === 0}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <UserCog className="h-3.5 w-3.5" />
-                      批量分配
-                    </button>
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[960px] table-fixed text-left">
-                    <thead className="bg-muted/40 text-[11px] text-muted-foreground">
-                      <tr>
-                        <th className="w-[5%] px-4 py-2.5 font-medium">
-                          <input
-                            ref={selectAllRef}
-                            type="checkbox"
-                            checked={allVisibleSelected}
-                            onChange={toggleAllVisible}
-                            disabled={visibleIds.length === 0}
-                            aria-label="全选当前筛选结果"
-                            className="h-4 w-4 rounded border-border accent-primary"
-                          />
-                        </th>
-                        <th className="w-[27%] px-4 py-2.5 font-medium">工单</th>
-                        <th className="w-[17%] px-4 py-2.5 font-medium">买家邮箱</th>
-                        <th className="w-[13%] px-4 py-2.5 font-medium">来源</th>
-                        <th className="w-[13%] px-4 py-2.5 font-medium">处理状态</th>
-                        <th className="w-[25%] px-4 py-2.5 font-medium">处理人</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {filteredTickets.map((ticket) => (
-                        <TicketAssignmentRow
-                          key={ticket.id}
-                          ticket={ticket}
-                          selected={selectedIdSet.has(ticket.id)}
-                          onToggle={() => toggleTicket(ticket.id)}
-                          onAssign={(value) => assignTicket(ticket, value)}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {filteredTickets.length === 0 && (
-                  <div className="flex h-44 flex-col items-center justify-center text-sm text-muted-foreground">
-                    <UserCog className="mb-2 h-6 w-6 opacity-50" />
-                    当前条件下没有工单
-                  </div>
-                )}
-              </section>
+                </section>
+              </div>
             </>
           ) : (
             <>
@@ -533,48 +710,56 @@ function AdminPage() {
   );
 }
 
-function AgentWorkloadRow({ row }: { row: AgentWorkload }) {
+function AgentWorkloadItem({ row }: { row: AgentWorkload }) {
   return (
-    <tr className="transition-colors hover:bg-muted/25">
-      <td className="px-4 py-3">
-        <p className="text-xs font-semibold">{row.account.name}</p>
-        <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{row.account.email}</p>
-      </td>
-      <td className="px-4 py-3">
+    <article className="px-3 py-3 transition-colors hover:bg-muted/25">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold">{row.account.name}</p>
+          <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{row.account.email}</p>
+        </div>
         <AccountRoleBadge role={row.account.role} />
-      </td>
-      <td className="px-4 py-3">
-        <AccountPresenceBadge account={row.account} />
-      </td>
-      <WorkloadCount value={row.assigned} />
-      <WorkloadCount value={row.processing} tone="info" />
-      <WorkloadCount value={row.completed} tone="success" />
-      <WorkloadCount value={row.unread} tone={row.unread > 0 ? "warning" : "default"} />
-      <td className="px-4 py-3 text-center">
-        <span className="text-xs font-semibold tabular-nums">{row.completionRate}%</span>
-      </td>
-    </tr>
+      </div>
+      <dl className="mt-2 grid grid-cols-5 gap-1.5">
+        <WorkloadMetric label="已分配" value={row.assigned} />
+        <WorkloadMetric label="持续处理" value={row.processing} tone="info" />
+        <WorkloadMetric label="处理完毕" value={row.completed} tone="success" />
+        <WorkloadMetric
+          label="未读"
+          value={row.unread}
+          tone={row.unread > 0 ? "warning" : "default"}
+        />
+        <WorkloadMetric label="完成率" value={`${row.completionRate}%`} />
+      </dl>
+    </article>
   );
 }
 
-function WorkloadCount({
+function WorkloadMetric({
+  label,
   value,
   tone = "default",
 }: {
-  value: number;
+  label: string;
+  value: number | string;
   tone?: "default" | "info" | "success" | "warning";
 }) {
   return (
-    <td
-      className={cn(
-        "px-4 py-3 text-center text-xs font-semibold tabular-nums",
-        tone === "info" && value > 0 && "text-info",
-        tone === "success" && value > 0 && "text-success",
-        tone === "warning" && value > 0 && "text-warning-foreground",
-      )}
-    >
-      {value}
-    </td>
+    <div className="min-w-0 rounded bg-muted/45 px-1 py-1.5 text-center">
+      <dt className="truncate text-[9px] text-muted-foreground" title={label}>
+        {label}
+      </dt>
+      <dd
+        className={cn(
+          "mt-0.5 text-xs font-semibold tabular-nums",
+          tone === "info" && Number(value) > 0 && "text-info",
+          tone === "success" && Number(value) > 0 && "text-success",
+          tone === "warning" && Number(value) > 0 && "text-warning-foreground",
+        )}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }
 
@@ -591,7 +776,7 @@ function AccountPermissionRow({
 }) {
   return (
     <tr className="transition-colors hover:bg-muted/25">
-      <td className="px-4 py-3">
+      <td className="px-2 py-3">
         <div className="flex items-center gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
             {account.role === "online" ? (
@@ -606,7 +791,7 @@ function AccountPermissionRow({
           </div>
         </div>
       </td>
-      <td className="px-4 py-3">
+      <td className="px-2 py-3">
         <select
           value={account.role}
           onChange={(event) => onRoleChange(event.target.value as SupportAccountRole)}
@@ -741,26 +926,6 @@ function AccountRoleBadge({ role }: { role: SupportAccountRole }) {
   );
 }
 
-function AccountPresenceBadge({ account }: { account: SupportAccount }) {
-  if (account.role === "email" || !account.presence) {
-    return <span className="text-[10px] text-muted-foreground">不适用</span>;
-  }
-
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[10px] font-medium">
-      <span
-        className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          account.presence === "idle" && "bg-success",
-          account.presence === "busy" && "bg-warning",
-          account.presence === "offline" && "bg-muted-foreground",
-        )}
-      />
-      {SUPPORT_ACCOUNT_PRESENCE_LABELS[account.presence]}
-    </span>
-  );
-}
-
 function AssignmentStat({
   label,
   value,
@@ -805,7 +970,6 @@ function TicketAssignmentRow({
     .reverse()
     .find((message) => message.direction === "inbound");
   const source = ticket.source === "web_widget" ? "工单留言" : formatMailbox(ticket.mailbox);
-  const completed = ticket.status === "closed";
 
   return (
     <tr className={cn("transition-colors hover:bg-muted/25", selected && "bg-primary/[0.04]")}>
@@ -826,36 +990,21 @@ function TicketAssignmentRow({
           </p>
         </Link>
       </td>
-      <td className="truncate px-4 py-3 text-[11px] text-muted-foreground">{ticket.contact}</td>
-      <td className="px-4 py-3">
-        <span className="rounded bg-primary/8 px-1.5 py-0.5 text-[10px] text-primary">
+      <td className="truncate px-2 py-3 text-[10px] text-muted-foreground">{ticket.contact}</td>
+      <td className="px-2 py-3">
+        <span className="block truncate rounded bg-primary/8 px-1.5 py-0.5 text-[10px] text-primary">
           {source}
         </span>
       </td>
-      <td className="px-4 py-3">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
-            completed ? "bg-success/15 text-success" : "bg-info/10 text-info",
-          )}
-        >
-          {completed ? (
-            <CheckCircle2 className="h-3 w-3" />
-          ) : (
-            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-          )}
-          {completed ? "处理完毕" : "持续处理"}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <UserCog className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <td className="px-2 py-3">
+        <div className="flex items-center gap-1.5">
+          <UserCog className="hidden h-3.5 w-3.5 shrink-0 text-muted-foreground xl:block" />
           <select
             value={ticket.assignee ?? "unassigned"}
             onChange={(event) => onAssign(event.target.value)}
             aria-label={`分配 ${ticket.id} 的处理人`}
             className={cn(
-              "h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs outline-none focus:border-primary",
+              "h-8 min-w-0 flex-1 rounded-md border bg-background px-1.5 text-[11px] outline-none focus:border-primary",
               !ticket.assignee && "text-muted-foreground",
             )}
           >
