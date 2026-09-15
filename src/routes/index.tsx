@@ -242,8 +242,32 @@ function Index() {
   };
 
   const end = (id: string) => {
-    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status: "ended" as const } : s)));
-    toast.success("会话已结束");
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              status: "ended" as const,
+              lastMessage: "会话已解决",
+              lastTime: "刚刚",
+              messages: [
+                ...s.messages,
+                {
+                  id: `sys${Date.now()}`,
+                  sender: "system" as const,
+                  type: "system" as const,
+                  content: "会话已标记为已解决",
+                  time: new Date().toLocaleTimeString("zh-CN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                },
+              ],
+            }
+          : s,
+      ),
+    );
+    toast.success("会话已标记为已解决");
   };
 
   const suspendSession = (id: string) => {

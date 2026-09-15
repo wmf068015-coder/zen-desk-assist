@@ -1,8 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import type { Session, Message, VisitorFormSubmission } from "@/lib/mock-data";
+import {
+  isSessionUnresolved,
+  type Session,
+  type Message,
+  type VisitorFormSubmission,
+} from "@/lib/mock-data";
 import { quickReplies } from "@/lib/mock-data";
 import { knowledgeStore } from "@/lib/knowledge-store";
-import { StatusBadge, TagBadge, ChannelIcon } from "./StatusBadge";
+import { StatusBadge, ChannelIcon } from "./StatusBadge";
 import {
   Bot,
   User,
@@ -11,7 +16,6 @@ import {
   Send,
   Zap,
   UserCheck,
-  XCircle,
   Download,
   MoreVertical,
   FileText,
@@ -24,6 +28,7 @@ import {
   CheckSquare,
   Check,
   CheckCheck,
+  CheckCircle2,
   Pencil,
   PauseCircle,
   PlayCircle,
@@ -62,7 +67,6 @@ export function ChatPanel({
 }: Props) {
   const [input, setInput] = useState("");
   const [showQuick, setShowQuick] = useState(false);
-  const [showAiHistory, setShowAiHistory] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [actionMessageId, setActionMessageId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -285,46 +289,10 @@ export function ChatPanel({
               <span>会话 {session.id}</span>
               <span>·</span>
               <span>{session.startTime} 开始</span>
-              {session.tags.length > 0 && (
-                <>
-                  <span>·</span>
-                  <div className="flex gap-1">
-                    {session.tags.map((t) => (
-                      <TagBadge key={t} tag={t} />
-                    ))}
-                  </div>
-                </>
-              )}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowAiHistory((v) => !v)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-              showAiHistory
-                ? "bg-status-ai/15 text-status-ai"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            <Bot className="h-3.5 w-3.5" />
-            AI 历史
-          </button>
-          {session.aiSummary && (
-            <button
-              onClick={() => setSummaryExpanded((v) => !v)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                summaryExpanded
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              AI 摘要
-            </button>
-          )}
           {session.status === "human" && (
             <Link
               to="/knowledge"
@@ -373,13 +341,14 @@ export function ChatPanel({
               恢复会话
             </button>
           )}
-          {session.status === "human" && (
+          {isSessionUnresolved(session) && (
             <button
               onClick={() => onEnd(session.id)}
               className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-destructive hover:text-destructive"
+              title="将当前会话标记为已解决"
             >
-              <XCircle className="h-3.5 w-3.5" />
-              结束会话
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              已解决
             </button>
           )}
           <button
@@ -539,7 +508,6 @@ export function ChatPanel({
               >
                 <MessageBubble
                   message={m}
-                  highlight={showAiHistory && m.sender === "ai"}
                   selected={selectedMessageIds.includes(m.id)}
                   actionOpen={actionMessageId === m.id}
                   selectionMode={selectionMode}
@@ -914,7 +882,6 @@ function getFormFieldStatusLabel(status: VisitorFormSubmission["fields"][number]
 
 function MessageBubble({
   message,
-  highlight,
   selected,
   actionOpen,
   selectionMode,
@@ -929,7 +896,6 @@ function MessageBubble({
   onCloseForm,
 }: {
   message: Message;
-  highlight?: boolean;
   selected?: boolean;
   actionOpen?: boolean;
   selectionMode?: boolean;
@@ -1038,7 +1004,6 @@ function MessageBubble({
             isCustomer && "rounded-tl-sm bg-card border",
             isAi && "rounded-tr-sm bg-status-ai/10 text-foreground border border-status-ai/20",
             !isCustomer && !isAi && "rounded-tr-sm bg-gradient-primary text-primary-foreground",
-            highlight && "ring-2 ring-status-ai/40",
             actionOpen && "ring-2 ring-primary/40",
             selected && "ring-2 ring-success/60",
             selectable && !selectionMode && "cursor-pointer select-none",

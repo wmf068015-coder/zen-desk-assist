@@ -23,6 +23,12 @@ import { toast } from "sonner";
 
 const HANDOFF_NOTE_PREFIX = "zen-desk-assist:handoff-note:";
 const CATALOG_PAGE_SIZE = 10;
+const TRANSLATION_LANGUAGES = [
+  { value: "system", label: "系统默认" },
+  { value: "zh-CN", label: "中文" },
+  { value: "en-US", label: "English" },
+  { value: "custom", label: "自定义" },
+] as const;
 
 interface CustomerPanelProps {
   customer: Customer;
@@ -53,6 +59,8 @@ export function CustomerPanel({
   const [noteExpanded, setNoteExpanded] = useState(false);
   const [translationInput, setTranslationInput] = useState("");
   const [translationResult, setTranslationResult] = useState("");
+  const [translationTarget, setTranslationTarget] = useState("system");
+  const [customTranslationTarget, setCustomTranslationTarget] = useState("");
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogPage, setCatalogPage] = useState(1);
   const currentProducts = customer.currentProducts.slice(0, 3);
@@ -109,10 +117,20 @@ export function CustomerPanel({
     toast.success("备注已保存");
   };
 
-  const translateToSystemLanguage = () => {
+  const translateToTargetLanguage = () => {
     const input = translationInput.trim();
     if (!input) return;
-    setTranslationResult(translateSupportMessage(input, getSystemLanguage()));
+    const targetLanguage =
+      translationTarget === "system"
+        ? getSystemLanguage()
+        : translationTarget === "custom"
+          ? customTranslationTarget.trim()
+          : translationTarget;
+    if (!targetLanguage) {
+      toast.warning("请输入目标语言");
+      return;
+    }
+    setTranslationResult(translateSupportMessage(input, targetLanguage));
   };
 
   const toggleHandoffNote = () => {
@@ -226,18 +244,54 @@ export function CustomerPanel({
                 <Languages className="h-3.5 w-3.5 text-primary" />
                 AI 翻译
               </div>
-              {translationInput && (
-                <button
-                  type="button"
-                  onClick={clearTranslation}
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  aria-label="清空翻译"
-                  title="清空"
+              <div className="flex items-center gap-1.5">
+                <label
+                  htmlFor={`translation-target-${sessionId}`}
+                  className="text-[10px] text-muted-foreground"
                 >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+                  翻译为
+                </label>
+                <select
+                  id={`translation-target-${sessionId}`}
+                  value={translationTarget}
+                  onChange={(event) => {
+                    setTranslationTarget(event.target.value);
+                    setTranslationResult("");
+                  }}
+                  className="h-6 rounded-md border bg-background px-1.5 text-[10px] text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+                  aria-label="翻译目标语言"
+                >
+                  {TRANSLATION_LANGUAGES.map((language) => (
+                    <option key={language.value} value={language.value}>
+                      {language.label}
+                    </option>
+                  ))}
+                </select>
+                {translationInput && (
+                  <button
+                    type="button"
+                    onClick={clearTranslation}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    aria-label="清空翻译"
+                    title="清空"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
+            {translationTarget === "custom" && (
+              <input
+                value={customTranslationTarget}
+                onChange={(event) => {
+                  setCustomTranslationTarget(event.target.value.slice(0, 40));
+                  setTranslationResult("");
+                }}
+                placeholder="输入目标语言，如 Français"
+                aria-label="自定义目标语言"
+                className="mb-2 h-8 w-full rounded-lg border bg-background px-3 text-xs outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            )}
             <textarea
               value={translationInput}
               onChange={(event) => {
@@ -253,7 +307,7 @@ export function CustomerPanel({
             <button
               type="button"
               disabled={!translationInput.trim()}
-              onClick={translateToSystemLanguage}
+              onClick={translateToTargetLanguage}
               className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Languages className="h-3.5 w-3.5" />

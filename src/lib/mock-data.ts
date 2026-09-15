@@ -111,6 +111,10 @@ export interface Session {
   };
 }
 
+export function isSessionUnresolved(session: Pick<Session, "status" | "transferred">) {
+  return session.transferred && session.status !== "human" && session.status !== "ended";
+}
+
 export const CHANNEL_LABELS: Record<Channel, string> = {
   web: "网站",
   wechat: "微信",

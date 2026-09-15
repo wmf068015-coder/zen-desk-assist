@@ -1,5 +1,12 @@
 import { useState, useMemo } from "react";
-import { type Message, type Session, type SessionStatus, CHANNEL_LABELS, TAG_LABELS } from "@/lib/mock-data";
+import {
+  type Message,
+  type Session,
+  type SessionStatus,
+  CHANNEL_LABELS,
+  isSessionUnresolved,
+  TAG_LABELS,
+} from "@/lib/mock-data";
 import { TagBadge, ChannelIcon } from "./StatusBadge";
 import { cn } from "@/lib/utils";
 import { Search, Filter, ArrowRightLeft } from "lucide-react";
@@ -12,9 +19,9 @@ interface Props {
   onCapacityChange: (n: number) => void;
 }
 
-const statusFilters: { value: SessionStatus | "all" | "unread"; label: string }[] = [
+const statusFilters: { value: SessionStatus | "all" | "unresolved"; label: string }[] = [
   { value: "all", label: "全部" },
-  { value: "unread", label: "未读" },
+  { value: "unresolved", label: "未解决" },
   { value: "ai", label: "AI处理中" },
   { value: "waiting", label: "待人工" },
   { value: "human", label: "人工中" },
@@ -31,7 +38,9 @@ function getMessagePreview(message: Message) {
 }
 
 function getSessionLastMessage(session: Session) {
-  const lastMessage = [...session.messages].reverse().find((message) => message.sender !== "system");
+  const lastMessage = [...session.messages]
+    .reverse()
+    .find((message) => message.sender !== "system");
   return lastMessage ? getMessagePreview(lastMessage) : session.lastMessage;
 }
 
@@ -52,8 +61,8 @@ export function SessionList({
   const filtered = useMemo(() => {
     return sessions.filter((s) => {
       const lastMessage = getSessionLastMessage(s);
-      if (filter === "unread" && s.unread === 0) return false;
-      if (filter !== "all" && filter !== "unread" && s.status !== filter) return false;
+      if (filter === "unresolved" && !isSessionUnresolved(s)) return false;
+      if (filter !== "all" && filter !== "unresolved" && s.status !== filter) return false;
       if (channelFilter !== "all" && s.channel !== channelFilter) return false;
       if (tagFilter !== "all" && !s.tags.includes(tagFilter as never)) return false;
       if (transferredOnly && !s.transferred) return false;
@@ -230,7 +239,9 @@ function SessionItem({
           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
             主题
           </span>
-          <span className="truncate text-xs font-medium text-foreground/80">{session.shortTitle}</span>
+          <span className="truncate text-xs font-medium text-foreground/80">
+            {session.shortTitle}
+          </span>
         </div>
         {session.transferred && (
           <div className="mt-1 flex items-center gap-1.5">
@@ -243,6 +254,11 @@ function SessionItem({
         <p className="mt-1 truncate text-xs text-muted-foreground">{lastMessage}</p>
         <div className="mt-1.5 flex items-center justify-between gap-2">
           <div className="flex min-w-0 gap-1">
+            {isSessionUnresolved(session) && (
+              <span className="inline-flex items-center rounded bg-warning/15 px-1.5 py-0.5 text-[11px] font-medium text-warning-foreground">
+                未解决
+              </span>
+            )}
             {session.tags.slice(0, 2).map((t) => (
               <TagBadge key={t} tag={t} />
             ))}
@@ -252,11 +268,6 @@ function SessionItem({
               </span>
             )}
           </div>
-          {session.unread > 0 && (
-            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold text-destructive-foreground">
-              {session.unread}
-            </span>
-          )}
         </div>
       </div>
     </button>
