@@ -16,10 +16,15 @@ export const knowledgeStore = {
     listeners.add(cb);
     return () => listeners.delete(cb);
   },
-  add(a: Omit<KnowledgeArticle, "id" | "views" | "updatedAt" | "status" | "confidence" | "useCount" | "submittedAt"> & {
-    submittedAt?: string;
-    status?: KnowledgeArticle["status"];
-  }) {
+  add(
+    a: Omit<
+      KnowledgeArticle,
+      "id" | "views" | "updatedAt" | "status" | "confidence" | "useCount" | "submittedAt"
+    > & {
+      submittedAt?: string;
+      status?: KnowledgeArticle["status"];
+    },
+  ) {
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = `${dateStr} ${now.toTimeString().slice(0, 5)}`;
@@ -28,7 +33,7 @@ export const knowledgeStore = {
       views: 0,
       updatedAt: dateStr,
       status: a.status ?? "pending",
-      confidence: 20,
+      confidence: a.status === "approved" ? 70 : 20,
       useCount: 0,
       submittedAt: a.submittedAt ?? timeStr,
       ...a,
@@ -48,7 +53,7 @@ export const knowledgeStore = {
             reviewedAt: now.toISOString().slice(0, 10),
             confidence: Math.max(a.confidence, 50),
           }
-        : a
+        : a,
     );
     emit();
   },
@@ -58,13 +63,39 @@ export const knowledgeStore = {
       a.id === id
         ? {
             ...a,
-            status: "rejected" as const,
+            status: "disabled" as const,
             reviewedBy: reviewer,
             reviewedAt: now.toISOString().slice(0, 10),
             rejectReason: reason,
           }
-        : a
+        : a,
     );
+    emit();
+  },
+  setStatus(id: string, status: "approved" | "disabled") {
+    const updatedAt = new Date().toISOString().slice(0, 10);
+    articles = articles.map((article) =>
+      article.id === id ? { ...article, status, updatedAt } : article,
+    );
+    emit();
+  },
+  update(
+    id: string,
+    update: Partial<
+      Pick<
+        KnowledgeArticle,
+        "title" | "category" | "summary" | "content" | "originalContent" | "tags"
+      >
+    >,
+  ) {
+    const updatedAt = new Date().toISOString().slice(0, 10);
+    articles = articles.map((article) =>
+      article.id === id ? { ...article, ...update, updatedAt } : article,
+    );
+    emit();
+  },
+  remove(id: string) {
+    articles = articles.filter((article) => article.id !== id);
     emit();
   },
   /** 模拟 AI 引用知识：使用次数 +1，置信度按 log 增长，封顶 99 */

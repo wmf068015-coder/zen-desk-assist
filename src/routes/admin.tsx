@@ -347,7 +347,7 @@ function AdminPage() {
               to="/tickets"
               className="inline-flex h-9 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium hover:border-primary/40 hover:text-primary"
             >
-              查看工单
+              查看邮件工单
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -396,7 +396,7 @@ function AdminPage() {
           {activeView === "assignments" ? (
             <>
               <dl className="grid grid-cols-4 overflow-hidden rounded-md border bg-card">
-                <AssignmentStat label="全部工单" value={tickets.length} icon={<Inbox />} />
+                <AssignmentStat label="全部邮件工单" value={tickets.length} icon={<Inbox />} />
                 <AssignmentStat
                   label="待分配"
                   value={unassignedCount}
@@ -584,7 +584,7 @@ function AdminPage() {
                               className="h-4 w-4 rounded border-border accent-primary"
                             />
                           </th>
-                          <th className="w-[31%] px-2 py-2.5 font-medium">工单</th>
+                          <th className="w-[31%] px-2 py-2.5 font-medium">邮件工单</th>
                           <th className="w-[22%] px-2 py-2.5 font-medium">买家邮箱</th>
                           <th className="w-[14%] px-2 py-2.5 font-medium">来源</th>
                           <th className="w-[24%] px-2 py-2.5 font-medium">处理人</th>

@@ -2,12 +2,9 @@ import { Link, useLocation } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   MessageSquare,
-  BarChart3,
   Settings,
   Headphones,
-  FileText,
   Bell,
-  Gauge,
   BookOpen,
   Inbox,
   User,
@@ -17,12 +14,9 @@ import { cn } from "@/lib/utils";
 
 const items = [
   { to: "/", label: "工作台", icon: MessageSquare },
-  { to: "/tickets", label: "工单", icon: Inbox },
+  { to: "/tickets", label: "邮件工单", icon: Inbox },
   { to: "/admin", label: "管理员", icon: UserCog },
-  { to: "/capacity", label: "接待配置", icon: Gauge },
   { to: "/knowledge", label: "知识库", icon: BookOpen },
-  { to: "/stats", label: "接待统计", icon: BarChart3 },
-  { to: "/audit", label: "审计日志", icon: FileText },
   { to: "/settings", label: "设置", icon: Settings },
 ];
 

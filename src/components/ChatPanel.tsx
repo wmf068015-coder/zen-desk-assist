@@ -39,6 +39,24 @@ import {
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+const knowledgeCategories = [
+  "产品咨询",
+  "配件与兼容",
+  "支付与财税",
+  "退换货政策",
+  "物流履约",
+  "产品故障排查",
+  "保修与售后",
+] as const;
 
 interface Props {
   session: Session;
@@ -74,6 +92,12 @@ export function ChatPanel({
   const [openFormId, setOpenFormId] = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
   const [showLatestShortcut, setShowLatestShortcut] = useState(false);
+  const [knowledgeDialogOpen, setKnowledgeDialogOpen] = useState(false);
+  const [knowledgeTitle, setKnowledgeTitle] = useState("");
+  const [knowledgeCategory, setKnowledgeCategory] = useState<(typeof knowledgeCategories)[number]>(
+    knowledgeCategories[0],
+  );
+  const [knowledgeContent, setKnowledgeContent] = useState("");
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const latestMessageRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -122,6 +146,7 @@ export function ChatPanel({
     setSelectedMessageIds([]);
     setSummaryExpanded(false);
     setOpenFormId(null);
+    setKnowledgeDialogOpen(false);
   }, [session.id]);
 
   const send = () => {
@@ -230,32 +255,41 @@ export function ChatPanel({
     closeMessageActions();
   };
 
-  const addSelectedToKnowledge = () => {
+  const openKnowledgeDialog = () => {
     if (selectedMessages.length === 0) {
       toast.warning("请先长按消息选择聊天记录");
       return;
     }
-    const title = window.prompt(
-      "知识标题",
-      session.aiSummary?.l3_intent ?? `来自会话 ${session.id}`,
-    );
-    if (!title) return;
-    const content = window.prompt(
-      "知识正文（已带入选中的聊天记录，可继续整理）",
-      selectedMessages.map(formatKnowledgeMessage).join("\n"),
-    );
-    if (!content) return;
+    setKnowledgeTitle(session.aiSummary?.l3_intent ?? `来自会话 ${session.id}`);
+    setKnowledgeCategory(knowledgeCategories[0]);
+    setKnowledgeContent(selectedMessages.map(formatKnowledgeMessage).join("\n"));
+    setKnowledgeDialogOpen(true);
+  };
+
+  const addSelectedToKnowledge = () => {
+    const title = knowledgeTitle.trim();
+    const content = knowledgeContent.trim();
+    if (!title) {
+      toast.warning("请填写知识标题");
+      return;
+    }
+    if (!content) {
+      toast.warning("请填写知识正文");
+      return;
+    }
     knowledgeStore.add({
       title: title.slice(0, 120),
-      category: "会话沉淀",
+      category: knowledgeCategory,
       summary: content.slice(0, 80),
       content: content.slice(0, 5000),
+      originalContent: content.slice(0, 5000),
       tags: session.tags,
       source: "session",
       sourceSessionId: session.id,
       submittedBy: "客服小美",
       status: "pending",
     });
+    setKnowledgeDialogOpen(false);
     closeMessageActions();
     toast.success("已提交审核", {
       description: `已导入 ${selectedMessages.length} 条聊天记录，等待后台管理员审核`,
@@ -306,7 +340,10 @@ export function ChatPanel({
           )}
           {session.status === "human" && (
             <button
-              onClick={addSelectedToKnowledge}
+              onClick={(event) => {
+                event.stopPropagation();
+                openKnowledgeDialog();
+              }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/5 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/10"
               title="将选中的聊天记录沉淀为知识"
             >
@@ -585,6 +622,20 @@ export function ChatPanel({
         </div>
       )}
 
+      <KnowledgeImportDialog
+        open={knowledgeDialogOpen}
+        title={knowledgeTitle}
+        category={knowledgeCategory}
+        content={knowledgeContent}
+        selectedCount={selectedMessages.length}
+        selectedMessages={selectedMessages}
+        onOpenChange={setKnowledgeDialogOpen}
+        onTitleChange={setKnowledgeTitle}
+        onCategoryChange={setKnowledgeCategory}
+        onContentChange={setKnowledgeContent}
+        onSubmit={addSelectedToKnowledge}
+      />
+
       {/* Input */}
       <div className="border-t bg-card p-4">
         <div className="mx-auto max-w-3xl">
@@ -649,6 +700,132 @@ export function ChatPanel({
         </div>
       </div>
     </div>
+  );
+}
+
+function KnowledgeImportDialog({
+  open,
+  title,
+  category,
+  content,
+  selectedCount,
+  selectedMessages,
+  onOpenChange,
+  onTitleChange,
+  onCategoryChange,
+  onContentChange,
+  onSubmit,
+}: {
+  open: boolean;
+  title: string;
+  category: (typeof knowledgeCategories)[number];
+  content: string;
+  selectedCount: number;
+  selectedMessages: Message[];
+  onOpenChange: (open: boolean) => void;
+  onTitleChange: (value: string) => void;
+  onCategoryChange: (value: (typeof knowledgeCategories)[number]) => void;
+  onContentChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b px-5 py-4 text-left">
+          <DialogTitle className="text-base">添加到知识库</DialogTitle>
+          <DialogDescription className="mt-1 text-xs">
+            已选择 {selectedCount} 条聊天记录。整理后提交，内容将进入管理员审核队列。
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid max-h-[70vh] gap-4 overflow-y-auto px-5 py-4">
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-medium">知识标题</span>
+              <input
+                value={title}
+                onChange={(event) => onTitleChange(event.target.value)}
+                maxLength={120}
+                placeholder="例如：订单延迟处理说明"
+                className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+                autoFocus
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-medium">知识大类</span>
+              <select
+                value={category}
+                onChange={(event) =>
+                  onCategoryChange(event.target.value as (typeof knowledgeCategories)[number])
+                }
+                className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              >
+                {knowledgeCategories.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="grid gap-1.5">
+            <span className="flex items-center justify-between text-xs font-medium">
+              <span>知识正文</span>
+              <span className="font-normal text-muted-foreground">可继续编辑，最多 5000 字</span>
+            </span>
+            <textarea
+              value={content}
+              onChange={(event) => onContentChange(event.target.value)}
+              maxLength={5000}
+              rows={9}
+              className="resize-y rounded-md border bg-background px-3 py-2 text-sm leading-6 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              placeholder="整理后的问题、处理结论和必要的上下文"
+            />
+          </label>
+
+          <div className="rounded-md border bg-muted/20">
+            <div className="flex items-center justify-between border-b px-3 py-2">
+              <span className="text-xs font-medium">已选消息预览</span>
+              <span className="text-[11px] text-muted-foreground">{selectedCount} 条</span>
+            </div>
+            <div className="max-h-32 space-y-1.5 overflow-y-auto p-3">
+              {selectedMessages.slice(0, 4).map((message) => (
+                <p key={message.id} className="truncate text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {getMessageSenderLabel(message)} · {message.time}
+                  </span>
+                  <span className="ml-2">{getMessageContentText(message)}</span>
+                </p>
+              ))}
+              {selectedCount > 4 && (
+                <p className="text-[11px] text-muted-foreground">
+                  另有 {selectedCount - 4} 条已选消息
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="border-t bg-muted/20 px-5 py-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="h-9 rounded-md border bg-background px-4 text-xs font-medium hover:border-primary/40"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={!title.trim() || !content.trim()}
+            className="h-9 rounded-md bg-primary px-4 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            提交审核
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

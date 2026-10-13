@@ -938,7 +938,7 @@ export const stats = {
   ],
 };
 
-export type KnowledgeStatus = "approved" | "pending" | "rejected";
+export type KnowledgeStatus = "approved" | "pending" | "disabled";
 export type KnowledgeSource = "manual" | "session";
 
 export interface KnowledgeArticle {
@@ -953,6 +953,9 @@ export interface KnowledgeArticle {
   status: KnowledgeStatus;
   source: KnowledgeSource;
   sourceSessionId?: string;
+  originalFileName?: string;
+  originalFileSize?: number;
+  originalContent?: string;
   submittedBy: string;
   submittedAt: string;
   reviewedBy?: string;
@@ -975,7 +978,7 @@ export const knowledgeBase: KnowledgeArticle[] = [
     tags: ["产品", "规格", "耳机"],
     updatedAt: "2025-01-10",
     views: 1284,
-    status: "approved",
+    status: "disabled",
     source: "manual",
     submittedBy: "运营 Anna",
     submittedAt: "2024-12-20",
@@ -1115,6 +1118,44 @@ export const knowledgeBase: KnowledgeArticle[] = [
     submittedAt: "2025-01-15 09:40",
     confidence: 25,
     useCount: 0,
+  },
+  {
+    id: "kb9",
+    category: "配件与兼容",
+    title: "相机笼与 Arca-Swiss 快装板兼容清单",
+    summary: "按产品系列说明相机笼、快装板、三脚架和稳定器之间的接口兼容关系。",
+    content:
+      "PA009 相机笼底部采用标准 1/4 英寸螺孔，可安装带 1/4 英寸螺丝的 Arca-Swiss 快装板。\n\n在搭配三脚架或稳定器前，应同时确认快装板宽度、锁紧方向和设备承重。不同品牌的 Arca-Swiss 结构可能存在公差，首次安装后需检查锁紧状态。\n\n如需同时安装麦克风、补光灯等配件，可优先使用相机笼顶部冷靴口和侧面 1/4 英寸扩展孔。",
+    tags: ["兼容", "相机笼", "快装板", "Q&A"],
+    updatedAt: "2026-09-20",
+    views: 318,
+    status: "approved",
+    source: "manual",
+    submittedBy: "管理员 Lee",
+    submittedAt: "2026-09-19 15:30",
+    reviewedBy: "管理员 Lee",
+    reviewedAt: "2026-09-20",
+    confidence: 91,
+    useCount: 86,
+  },
+  {
+    id: "kb10",
+    category: "支付与财税",
+    title: "订单发票与 VAT 信息处理规范",
+    summary: "说明普通发票、VAT 发票申请条件、信息校验和补开发票处理流程。",
+    content:
+      "客户申请普通订单发票时，需要提供订单号、购买邮箱、抬头和账单地址。客服核对订单归属后提交开票申请。\n\n客户申请 VAT 发票时，需要额外提供有效的 VAT 号码。系统校验失败时，应请客户重新核对号码，不得自行修改客户提供的税务信息。\n\n发票生成后以 PDF 附件发送至购买邮箱。如客户仅需个人姓名发票且无 VAT 号码，应按个人发票流程处理。",
+    tags: ["发票", "VAT", "支付"],
+    updatedAt: "2026-09-18",
+    views: 267,
+    status: "approved",
+    source: "manual",
+    submittedBy: "管理员 Lee",
+    submittedAt: "2026-09-17 10:15",
+    reviewedBy: "管理员 Lee",
+    reviewedAt: "2026-09-18",
+    confidence: 89,
+    useCount: 74,
   },
 ];
 
