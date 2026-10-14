@@ -58,6 +58,7 @@ import {
   Music2,
   Paperclip,
   PencilLine,
+  Plus,
   Redo2,
   Reply,
   RotateCcw,
@@ -89,6 +90,7 @@ export const Route = createFileRoute("/tickets")({
 type TicketFilter = "all" | "read" | "unread" | "processing" | "closed" | "failed";
 type TimeRange = "7" | "30" | "90" | "180" | "custom";
 type TicketSourceFilter = "all" | "web_widget" | "service@neewer.com" | "support@neewer.com";
+type ForwardMode = "saved" | "new";
 
 interface ReplyDraftState {
   to: string;
@@ -127,6 +129,7 @@ function TicketsPage() {
   const [query, setQuery] = useState("");
   const [replyExpanded, setReplyExpanded] = useState(false);
   const [forwardDialogOpen, setForwardDialogOpen] = useState(false);
+  const [forwardMode, setForwardMode] = useState<ForwardMode>("saved");
   const [forwardAddress, setForwardAddress] = useState(initialForwardAddresses[0]);
   const [newForwardAddress, setNewForwardAddress] = useState("");
   const [savedForwardAddresses, setSavedForwardAddresses] = useState(initialForwardAddresses);
@@ -295,6 +298,9 @@ function TicketsPage() {
   const activeTicket =
     filteredTickets.find((ticket) => ticket.id === activeId) ?? filteredTickets[0] ?? null;
   const activeMessages = activeTicket ? getTicketMessages(activeTicket) : [];
+  const forwardSourceMessage =
+    [...activeMessages].reverse().find((message) => message.direction === "inbound") ??
+    activeMessages.at(-1);
   const defaultDraft = activeTicket ? buildTicketReplyDraft(activeTicket) : null;
   const activeDraft = activeTicket
     ? (replyDrafts[activeTicket.id] ?? {
@@ -409,33 +415,27 @@ function TicketsPage() {
       toast.error("已处理完毕的工单不能转发邮件");
       return;
     }
+    setForwardMode("saved");
     setNewForwardAddress("");
-    setForwardAddress((current) => current || savedForwardAddresses[0] || "");
+    setForwardAddress(savedForwardAddresses[0] ?? "");
     setForwardDialogOpen(true);
   };
 
-  const addForwardAddress = () => {
-    const address = newForwardAddress.trim().toLowerCase();
-    if (!isEmailAddress(address)) {
-      toast.error("请输入有效的转发邮箱");
-      return;
-    }
-    setSavedForwardAddresses((current) =>
-      current.includes(address) ? current : [...current, address],
-    );
-    setForwardAddress(address);
+  const closeForwardDialog = () => {
+    setForwardDialogOpen(false);
+    setForwardMode("saved");
     setNewForwardAddress("");
-    toast.success("转发地址已添加");
   };
 
   const forwardLatestMessage = () => {
     if (!activeTicket) return;
-    const address = forwardAddress.trim();
+    const address =
+      forwardMode === "new" ? newForwardAddress.trim().toLowerCase() : forwardAddress.trim();
     if (!isEmailAddress(address)) {
-      toast.error("请选择或新增有效的转发邮箱");
+      toast.error(forwardMode === "new" ? "请输入有效的新增转发邮箱" : "请选择有效的转发邮箱");
       return;
     }
-    const message = activeMessages.at(-1);
+    const message = forwardSourceMessage;
     if (!message) return;
     const forwarded = buildForwardedMessage(message);
     try {
@@ -448,7 +448,7 @@ function TicketsPage() {
         action: "forward",
       });
       updateTicket(activeTicket.id, () => updated);
-      setForwardDialogOpen(false);
+      closeForwardDialog();
       toast.success("邮件已转发", { description: `已转发至 ${address}` });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "邮件转发失败");
@@ -908,7 +908,7 @@ function TicketsPage() {
         attachment={previewAttachment}
         onClose={() => setPreviewAttachment(null)}
       />
-      <Dialog open={forwardDialogOpen} onOpenChange={setForwardDialogOpen}>
+      <Dialog open={forwardDialogOpen} onOpenChange={(open) => !open && closeForwardDialog()}>
         <DialogContent className="max-w-md gap-0 p-0">
           <DialogHeader className="border-b px-5 py-4 pr-12">
             <DialogTitle className="flex items-center gap-2 text-base">
@@ -916,68 +916,98 @@ function TicketsPage() {
               转发邮件
             </DialogTitle>
             <DialogDescription className="text-xs">
-              选择已有转发地址，或新增地址后直接转发最新邮件。
+              “转发至”和“新增转发地址”只能选择一种；新增邮箱仅用于本次转发。
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 px-5 py-4">
-            <div>
-              <label htmlFor="forward-address" className="mb-1.5 block text-xs font-medium">
-                转发至
-              </label>
-              <select
-                id="forward-address"
-                value={forwardAddress}
-                onChange={(event) => setForwardAddress(event.target.value)}
-                className="h-9 w-full rounded-md border bg-background px-2.5 text-sm outline-none focus:border-primary"
+            <div
+              role="tablist"
+              aria-label="转发地址类型"
+              className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={forwardMode === "saved"}
+                onClick={() => {
+                  setForwardMode("saved");
+                  setNewForwardAddress("");
+                }}
+                className={cn(
+                  "inline-flex h-8 items-center justify-center gap-1.5 rounded px-2 text-xs font-medium",
+                  forwardMode === "saved"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground",
+                )}
               >
-                {savedForwardAddresses.map((address) => (
-                  <option key={address} value={address}>
-                    {address}
-                  </option>
-                ))}
-              </select>
+                <Mail className="h-3.5 w-3.5" />
+                转发至
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={forwardMode === "new"}
+                onClick={() => {
+                  setForwardMode("new");
+                  setNewForwardAddress("");
+                }}
+                className={cn(
+                  "inline-flex h-8 items-center justify-center gap-1.5 rounded px-2 text-xs font-medium",
+                  forwardMode === "new"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground",
+                )}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                新增转发地址
+              </button>
             </div>
 
-            <div>
-              <label htmlFor="new-forward-address" className="mb-1.5 block text-xs font-medium">
-                新增转发地址
-              </label>
-              <div className="flex gap-2">
+            {forwardMode === "saved" ? (
+              <div>
+                <label htmlFor="forward-address" className="mb-1.5 block text-xs font-medium">
+                  选择已有地址
+                </label>
+                <select
+                  id="forward-address"
+                  value={forwardAddress}
+                  onChange={(event) => setForwardAddress(event.target.value)}
+                  className="h-9 w-full rounded-md border bg-background px-2.5 text-sm outline-none focus:border-primary"
+                >
+                  {savedForwardAddresses.map((address) => (
+                    <option key={address} value={address}>
+                      {address}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label htmlFor="new-forward-address" className="mb-1.5 block text-xs font-medium">
+                  新增转发地址
+                </label>
                 <input
                   id="new-forward-address"
                   type="email"
                   value={newForwardAddress}
                   onChange={(event) => setNewForwardAddress(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addForwardAddress();
-                    }
-                  }}
                   placeholder="name@example.com"
-                  className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+                  className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
                 />
-                <button
-                  type="button"
-                  onClick={addForwardAddress}
-                  disabled={!newForwardAddress.trim()}
-                  className="h-9 rounded-md border px-3 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  新增
-                </button>
               </div>
-            </div>
+            )}
 
-            {activeMessages.at(-1) && (
+            {forwardSourceMessage && (
               <div className="border-l-2 border-primary/35 bg-muted/30 px-3 py-2.5">
-                <p className="truncate text-xs font-medium">{activeMessages.at(-1)?.subject}</p>
+                <p className="truncate text-xs font-medium">{forwardSourceMessage.subject}</p>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                  来自 {activeMessages.at(-1)?.from} · {activeMessages.at(-1)?.sentAt}
-                  {activeMessages.at(-1)?.attachments.length
-                    ? ` · ${activeMessages.at(-1)?.attachments.length} 个附件`
+                  来自 {forwardSourceMessage.from} · {forwardSourceMessage.sentAt}
+                  {forwardSourceMessage.attachments.length
+                    ? ` · ${forwardSourceMessage.attachments.length} 个附件`
                     : ""}
                 </p>
+                <p className="mt-1 text-[10px] text-muted-foreground">本次将转发客户来信内容</p>
               </div>
             )}
           </div>
@@ -985,15 +1015,15 @@ function TicketsPage() {
           <DialogFooter className="border-t px-5 py-3">
             <button
               type="button"
-              onClick={() => setForwardDialogOpen(false)}
+              onClick={closeForwardDialog}
               className="h-9 rounded-md border px-4 text-sm font-medium hover:bg-muted"
             >
-              取消
+              取消转发
             </button>
             <button
               type="button"
               onClick={forwardLatestMessage}
-              disabled={!forwardAddress}
+              disabled={forwardMode === "new" ? !newForwardAddress.trim() : !forwardAddress.trim()}
               className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
             >
               <Forward className="h-4 w-4" />
