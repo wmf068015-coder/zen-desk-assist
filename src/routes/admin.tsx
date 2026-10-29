@@ -1,6 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DEFAULT_SUPPORT_ACCOUNTS,
@@ -111,7 +119,8 @@ function AdminPage() {
   const [assignmentPage, setAssignmentPage] = useState(1);
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [batchAssignee, setBatchAssignee] = useState<string>(SUPPORT_AGENTS[0]);
+  const [batchAssignee, setBatchAssignee] = useState("");
+  const [batchAssignmentOpen, setBatchAssignmentOpen] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -241,10 +250,13 @@ function AdminPage() {
   }, [totalAssignmentPages]);
 
   const assignTicket = (ticket: SupportTicket, value: string) => {
-    const assignee = value === "unassigned" ? undefined : value;
-    saveTicketAssignment(ticket.id, assignee);
-    toast.success(assignee ? "处理人已分配" : "已取消处理人分配", {
-      description: assignee ? `${ticket.id} → ${assignee}` : ticket.id,
+    if (!SUPPORT_AGENTS.some((agent) => agent === value)) {
+      toast.error("请选择有效的处理人");
+      return;
+    }
+    saveTicketAssignment(ticket.id, value);
+    toast.success("处理人已分配", {
+      description: `${ticket.id} → ${value}`,
     });
   };
 
@@ -268,14 +280,17 @@ function AdminPage() {
 
   const assignSelectedTickets = () => {
     if (selectedIds.length === 0) return;
-    const assignee = batchAssignee === "unassigned" ? undefined : batchAssignee;
-    saveTicketAssignments(selectedIds, assignee);
-    toast.success(assignee ? "工单已批量分配" : "已批量取消处理人分配", {
-      description: assignee
-        ? `${selectedIds.length} 个工单 → ${assignee}`
-        : `共 ${selectedIds.length} 个工单`,
+    if (!SUPPORT_AGENTS.some((agent) => agent === batchAssignee)) {
+      toast.error("请选择有效的处理人");
+      return;
+    }
+    saveTicketAssignments(selectedIds, batchAssignee);
+    toast.success("工单已批量分配", {
+      description: `${selectedIds.length} 个工单 → ${batchAssignee}`,
     });
     setSelectedIds([]);
+    setBatchAssignmentOpen(false);
+    setBatchAssignee("");
   };
 
   const changeAssignmentFilter = (value: AssignmentFilter) => {
@@ -468,6 +483,18 @@ function AdminPage() {
                           </option>
                         ))}
                       </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBatchAssignee("");
+                          setBatchAssignmentOpen(true);
+                        }}
+                        disabled={selectedIds.length === 0}
+                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <UserCog className="h-3.5 w-3.5" />
+                        批量分配
+                      </button>
                       <div className="relative w-72">
                         <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                         <input
@@ -542,30 +569,6 @@ function AdminPage() {
                           清空选择
                         </button>
                       )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={batchAssignee}
-                        onChange={(event) => setBatchAssignee(event.target.value)}
-                        aria-label="选择批量分配处理人"
-                        className="h-8 min-w-32 rounded-md border bg-background px-2 text-xs outline-none focus:border-primary"
-                      >
-                        <option value="unassigned">未分配</option>
-                        {SUPPORT_AGENTS.map((agent) => (
-                          <option key={agent} value={agent}>
-                            {agent}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={assignSelectedTickets}
-                        disabled={selectedIds.length === 0}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <UserCog className="h-3.5 w-3.5" />
-                        批量分配
-                      </button>
                     </div>
                   </div>
 
@@ -706,6 +709,62 @@ function AdminPage() {
           )}
         </div>
       </main>
+      <Dialog
+        open={batchAssignmentOpen}
+        onOpenChange={(open) => {
+          setBatchAssignmentOpen(open);
+          if (!open) setBatchAssignee("");
+        }}
+      >
+        <DialogContent className="w-[calc(100%-2rem)] max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base tracking-normal">批量分配处理人</DialogTitle>
+            <DialogDescription>
+              将选中的 {selectedIds.length} 封邮件分配给指定客服。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="batch-assignee" className="text-sm font-medium">
+              处理人
+            </label>
+            <select
+              id="batch-assignee"
+              value={batchAssignee}
+              onChange={(event) => setBatchAssignee(event.target.value)}
+              className="h-9 w-full rounded-md border bg-background px-2.5 text-sm outline-none focus:border-primary"
+            >
+              <option value="" disabled>
+                选择处理人
+              </option>
+              {SUPPORT_AGENTS.map((agent) => (
+                <option key={agent} value={agent}>
+                  {agent}
+                </option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <button
+              type="button"
+              onClick={() => {
+                setBatchAssignmentOpen(false);
+                setBatchAssignee("");
+              }}
+              className="h-9 rounded-md border px-3 text-sm hover:bg-muted"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={assignSelectedTickets}
+              disabled={selectedIds.length === 0 || !batchAssignee}
+              className="h-9 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              确认分配
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1000,7 +1059,7 @@ function TicketAssignmentRow({
         <div className="flex items-center gap-1.5">
           <UserCog className="hidden h-3.5 w-3.5 shrink-0 text-muted-foreground xl:block" />
           <select
-            value={ticket.assignee ?? "unassigned"}
+            value={ticket.assignee ?? ""}
             onChange={(event) => onAssign(event.target.value)}
             aria-label={`分配 ${ticket.id} 的处理人`}
             className={cn(
@@ -1008,7 +1067,11 @@ function TicketAssignmentRow({
               !ticket.assignee && "text-muted-foreground",
             )}
           >
-            <option value="unassigned">未分配</option>
+            {!ticket.assignee && (
+              <option value="" disabled>
+                选择处理人
+              </option>
+            )}
             {SUPPORT_AGENTS.map((agent) => (
               <option key={agent} value={agent}>
                 {agent}
