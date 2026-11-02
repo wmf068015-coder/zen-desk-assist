@@ -20,9 +20,11 @@ import {
   retryFailedTicketEmail,
   sendTicketEmail,
   TICKET_STATUS_LABELS,
+  TICKET_SOURCE_LABELS,
   type SupportTicket,
   type TicketAttachment,
   type TicketIssueType,
+  type TicketOrigin,
   type TicketReplyStatus,
   type TicketThreadMessage,
 } from "@/lib/ticket-replies";
@@ -89,7 +91,6 @@ export const Route = createFileRoute("/tickets")({
 
 type TicketFilter = "all" | "read" | "unread" | "processing" | "closed" | "failed";
 type TimeRange = "7" | "30" | "90" | "180" | "custom";
-type TicketSourceFilter = "all" | "web_widget" | "service@neewer.com" | "support@neewer.com";
 type ForwardMode = "saved" | "new";
 
 interface ReplyDraftState {
@@ -122,7 +123,8 @@ function TicketsPage() {
   const [activeId, setActiveId] = useState(initialSupportTickets[0]?.id ?? "");
   const [statusFilter, setStatusFilter] = useState<TicketFilter>("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
-  const [sourceFilter, setSourceFilter] = useState<TicketSourceFilter>("all");
+  const [sourceFilter, setSourceFilter] = useState<TicketOrigin>("email");
+  const [mailboxFilter, setMailboxFilter] = useState("all");
   const [timeRange, setTimeRange] = useState<TimeRange>("90");
   const [customStartDate, setCustomStartDate] = useState("2026-05-18");
   const [customEndDate, setCustomEndDate] = useState("2026-08-18");
@@ -226,6 +228,18 @@ function TicketsPage() {
       ).sort(),
     [tickets],
   );
+  const mailboxOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          tickets
+            .filter((ticket) => ticket.source === "email")
+            .map((ticket) => ticket.mailbox)
+            .filter((mailbox): mailbox is string => Boolean(mailbox)),
+        ),
+      ).sort(),
+    [tickets],
+  );
   const filteredTickets = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     const customStart = new Date(`${customStartDate}T00:00:00`).getTime();
@@ -257,11 +271,11 @@ function TicketsPage() {
         ) {
           return false;
         }
-        if (sourceFilter === "web_widget" && ticket.source !== "web_widget") return false;
+        if (ticket.source !== sourceFilter) return false;
         if (
-          sourceFilter !== "all" &&
-          sourceFilter !== "web_widget" &&
-          (ticket.source === "web_widget" || ticket.mailbox !== sourceFilter)
+          sourceFilter === "email" &&
+          mailboxFilter !== "all" &&
+          ticket.mailbox !== mailboxFilter
         ) {
           return false;
         }
@@ -290,6 +304,7 @@ function TicketsPage() {
     latestTimestamp,
     query,
     sourceFilter,
+    mailboxFilter,
     statusFilter,
     tickets,
     timeRange,
@@ -498,11 +513,45 @@ function TicketsPage() {
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-1.5">
+          <div className="mt-3 grid grid-cols-2 border-b" role="group" aria-label="邮件与工单">
+            {(
+              [
+                { value: "email", label: "全部邮件", icon: Mail },
+                { value: "web_widget", label: "全部工单", icon: Inbox },
+              ] as const
+            ).map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={sourceFilter === value}
+                onClick={() => {
+                  setSourceFilter(value);
+                  setMailboxFilter("all");
+                  setReplyExpanded(false);
+                }}
+                className={cn(
+                  "inline-flex h-10 items-center justify-center gap-1.5 border-b-2 text-xs font-medium transition-colors",
+                  sourceFilter === value
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div
+            className={cn(
+              "mt-3 grid gap-1.5",
+              sourceFilter === "email" ? "grid-cols-3" : "grid-cols-2",
+            )}
+          >
             <select
               value={timeRange}
               onChange={(event) => setTimeRange(event.target.value as TimeRange)}
-              aria-label="邮件时间范围"
+              aria-label="时间范围"
               className="h-9 min-w-0 rounded-md border bg-background px-2 text-[11px] outline-none focus:border-primary"
             >
               <option value="7">近 7 天</option>
@@ -511,17 +560,21 @@ function TicketsPage() {
               <option value="180">近 6 个月</option>
               <option value="custom">自定义时间</option>
             </select>
-            <select
-              value={sourceFilter}
-              onChange={(event) => setSourceFilter(event.target.value as TicketSourceFilter)}
-              aria-label="工单来源"
-              className="h-9 min-w-0 rounded-md border bg-background px-2 text-[11px] outline-none focus:border-primary"
-            >
-              <option value="all">全部来源</option>
-              <option value="web_widget">工单留言</option>
-              <option value="service@neewer.com">service 邮箱</option>
-              <option value="support@neewer.com">support 邮箱</option>
-            </select>
+            {sourceFilter === "email" && (
+              <select
+                value={mailboxFilter}
+                onChange={(event) => setMailboxFilter(event.target.value)}
+                aria-label="邮件来源邮箱"
+                className="h-9 min-w-0 rounded-md border bg-background px-2 text-[11px] outline-none focus:border-primary"
+              >
+                <option value="all">全部来源邮箱</option>
+                {mailboxOptions.map((mailbox) => (
+                  <option key={mailbox} value={mailbox}>
+                    {mailbox}
+                  </option>
+                ))}
+              </select>
+            )}
             <select
               value={assigneeFilter}
               onChange={(event) => setAssigneeFilter(event.target.value)}
@@ -617,7 +670,7 @@ function TicketsPage() {
           {filteredTickets.length === 0 && (
             <div className="flex h-48 flex-col items-center justify-center gap-2 px-8 text-center text-sm text-muted-foreground">
               <Inbox className="h-6 w-6 opacity-50" />
-              当前条件下没有邮件工单
+              当前条件下没有{sourceFilter === "email" ? "邮件" : "工单"}
             </div>
           )}
         </div>
@@ -631,7 +684,12 @@ function TicketsPage() {
                 <ReadStatusPill unread={Boolean(activeTicket.unread)} />
                 <TicketStatusPill status={activeTicket.status} />
                 <ReplyStatusPill status={getTicketReplyStatus(activeTicket)} />
-                <SourcePill source={activeTicket.source} mailbox={activeTicket.mailbox} />
+                <SourcePill source={activeTicket.source} />
+                {activeTicket.source === "email" && (
+                  <span className="text-[10px] text-muted-foreground">
+                    来源邮箱：{activeTicket.mailbox ?? "未提供"}
+                  </span>
+                )}
               </div>
               <h2 className="mt-1.5 truncate text-base font-semibold">{activeTicket.title}</h2>
               <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -1050,8 +1108,6 @@ function TicketListItem({
     .reverse()
     .find((message) => message.direction === "inbound");
   const receivedAt = latestInboundMessage?.sentAt ?? ticket.submittedAt;
-  const source = latestInboundMessage?.source ?? ticket.source;
-  const sourceMailbox = latestInboundMessage?.to ?? ticket.mailbox;
   const replyStatus = getTicketReplyStatus(ticket);
 
   return (
@@ -1065,14 +1121,26 @@ function TicketListItem({
     >
       {active && <span className="absolute inset-y-0 left-0 w-0.5 bg-primary" />}
       <dl className="grid grid-cols-[42px_minmax(0,1fr)_52px_max-content] items-center gap-x-2 gap-y-1.5">
-        <dt className="text-[10px] text-muted-foreground">来源</dt>
+        <dt className="text-[10px] text-muted-foreground">来源类型</dt>
         <dd className="min-w-0">
-          <SourcePill source={source} mailbox={sourceMailbox} />
+          <SourcePill source={ticket.source} />
         </dd>
         <dt className="text-[10px] text-muted-foreground">收件日期</dt>
         <dd className="whitespace-nowrap text-[10px] text-muted-foreground">
           <time>{receivedAt}</time>
         </dd>
+
+        {ticket.source === "email" && (
+          <>
+            <dt className="text-[10px] text-muted-foreground">来源邮箱</dt>
+            <dd
+              className="col-span-3 truncate text-[11px] text-muted-foreground"
+              title={ticket.mailbox}
+            >
+              {ticket.mailbox ?? "未提供"}
+            </dd>
+          </>
+        )}
 
         <dt className="text-[10px] text-muted-foreground">主题</dt>
         <dd
@@ -1738,7 +1806,7 @@ function ReplyStatusPill({ status }: { status: TicketReplyStatus }) {
   );
 }
 
-function SourcePill({ source, mailbox }: { source: SupportTicket["source"]; mailbox?: string }) {
+function SourcePill({ source }: { source: TicketOrigin }) {
   const isWidget = source === "web_widget";
   return (
     <span
@@ -1748,7 +1816,7 @@ function SourcePill({ source, mailbox }: { source: SupportTicket["source"]; mail
       )}
     >
       {isWidget ? <Inbox className="h-2.5 w-2.5" /> : <Mail className="h-2.5 w-2.5" />}
-      {isWidget ? "工单留言" : formatMailboxSource(mailbox)}
+      {TICKET_SOURCE_LABELS[source]}
     </span>
   );
 }

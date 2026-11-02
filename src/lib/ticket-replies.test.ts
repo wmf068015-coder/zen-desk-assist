@@ -83,6 +83,7 @@ describe("ticket email replies", () => {
     const thread = getTicketMessages(updated);
     assert.equal(updated.contact, "buyer@example.com");
     assert.equal(updated.status, "replied");
+    assert.equal(updated.source, "web_widget");
     assert.equal(thread.length, 2);
     assert.equal(thread[1].direction, "outbound");
     assert.equal(thread[1].bodyHtml, "<h2><strong>处理结果</strong></h2><p>订单将在今天发出。</p>");

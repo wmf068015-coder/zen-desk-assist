@@ -2,6 +2,7 @@ export type TicketIssueType = "order" | "logistics" | "refund" | "product" | "te
 export type TicketStatus = "new" | "processing" | "replied" | "closed";
 export type TicketPriority = "normal" | "high" | "urgent";
 export type TicketSource = "web_widget" | "email" | "agent";
+export type TicketOrigin = Exclude<TicketSource, "agent">;
 export type TicketMessageDirection = "inbound" | "outbound";
 export type TicketReplyStatus = "sent" | "unsent" | "failed";
 
@@ -51,7 +52,7 @@ export interface SupportTicket {
   attachments: TicketAttachment[];
   status: TicketStatus;
   priority: TicketPriority;
-  source: TicketSource;
+  source: TicketOrigin;
   customerName: string;
   submittedAt: string;
   lastUpdatedAt: string;
@@ -106,7 +107,7 @@ export const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
 
 export const TICKET_SOURCE_LABELS: Record<TicketSource, string> = {
   web_widget: "工单留言",
-  email: "邮箱来信",
+  email: "邮件来信",
   agent: "客服邮箱",
 };
 

@@ -112,6 +112,7 @@ function AdminPage() {
   const [tickets, setTickets] = useState(initialSupportTickets);
   const [accounts, setAccounts] = useState(DEFAULT_SUPPORT_ACCOUNTS);
   const [activeView, setActiveView] = useState<AdminView>("assignments");
+  const [assignmentSource, setAssignmentSource] = useState<SupportTicket["source"]>("email");
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all");
   const [assignmentTimeRange, setAssignmentTimeRange] = useState<AssignmentTimeRange>("all");
   const [customStartDate, setCustomStartDate] = useState(initialCustomStartDate);
@@ -168,6 +169,7 @@ function AdminPage() {
 
     return ticketRows
       .filter(({ ticket, timestamp }) => {
+        if (ticket.source !== assignmentSource) return false;
         if (assignmentTimeRange === "custom") {
           if (customRangeError || timestamp < customStart || timestamp > customEnd) return false;
         } else if (assignmentTimeRange !== "all" && timestamp < cutoff) {
@@ -191,6 +193,7 @@ function AdminPage() {
       .map(({ ticket }) => ticket);
   }, [
     assignmentFilter,
+    assignmentSource,
     assignmentTimeRange,
     customEndDate,
     customRangeError,
@@ -282,6 +285,14 @@ function AdminPage() {
     if (selectedIds.length === 0) return;
     if (!SUPPORT_AGENTS.some((agent) => agent === batchAssignee)) {
       toast.error("请选择有效的处理人");
+      return;
+    }
+    if (
+      selectedIds.some(
+        (id) => !tickets.some((ticket) => ticket.id === id && ticket.source === assignmentSource),
+      )
+    ) {
+      toast.error("所选记录不属于当前分配类型，请重新选择");
       return;
     }
     saveTicketAssignments(selectedIds, batchAssignee);
@@ -443,11 +454,48 @@ function AdminPage() {
                 </section>
 
                 <section className="min-w-0 overflow-hidden rounded-md border bg-card">
+                  <div
+                    className="grid grid-cols-2 border-b px-4"
+                    role="group"
+                    aria-label="分配类型"
+                  >
+                    {(
+                      [
+                        { value: "email", label: "邮件分配", icon: Mail },
+                        { value: "web_widget", label: "工单分配", icon: Inbox },
+                      ] as const
+                    ).map(({ value, label, icon: Icon }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={assignmentSource === value}
+                        onClick={() => {
+                          setAssignmentSource(value);
+                          setAssignmentPage(1);
+                          setSelectedIds([]);
+                          setBatchAssignee("");
+                          setBatchAssignmentOpen(false);
+                        }}
+                        className={cn(
+                          "inline-flex h-11 items-center justify-center gap-1.5 border-b-2 text-xs font-medium transition-colors",
+                          assignmentSource === value
+                            ? "border-primary text-primary"
+                            : "border-transparent text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
                     <div>
-                      <h2 className="text-sm font-semibold">工单处理人分配</h2>
+                      <h2 className="text-sm font-semibold">
+                        {assignmentSource === "email" ? "邮件" : "工单"}处理人分配
+                      </h2>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        当前显示 {filteredTickets.length} 条工单 · 收件时间由近到远
+                        当前显示 {filteredTickets.length} 条
+                        {assignmentSource === "email" ? "邮件" : "工单"} · 收件时间由近到远
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -587,7 +635,9 @@ function AdminPage() {
                               className="h-4 w-4 rounded border-border accent-primary"
                             />
                           </th>
-                          <th className="w-[31%] px-2 py-2.5 font-medium">邮件工单</th>
+                          <th className="w-[31%] px-2 py-2.5 font-medium">
+                            {assignmentSource === "email" ? "邮件" : "工单"}
+                          </th>
                           <th className="w-[22%] px-2 py-2.5 font-medium">买家邮箱</th>
                           <th className="w-[14%] px-2 py-2.5 font-medium">来源</th>
                           <th className="w-[24%] px-2 py-2.5 font-medium">处理人</th>
@@ -610,7 +660,7 @@ function AdminPage() {
                   {filteredTickets.length === 0 && (
                     <div className="flex h-44 flex-col items-center justify-center text-sm text-muted-foreground">
                       <UserCog className="mb-2 h-6 w-6 opacity-50" />
-                      当前条件下没有工单
+                      当前条件下没有{assignmentSource === "email" ? "邮件" : "工单"}
                     </div>
                   )}
 
@@ -720,7 +770,8 @@ function AdminPage() {
           <DialogHeader>
             <DialogTitle className="text-base tracking-normal">批量分配处理人</DialogTitle>
             <DialogDescription>
-              将选中的 {selectedIds.length} 封邮件分配给指定客服。
+              将选中的 {selectedIds.length} {assignmentSource === "email" ? "封邮件" : "条工单"}
+              分配给指定客服。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -1028,7 +1079,7 @@ function TicketAssignmentRow({
   const latestInbound = [...getTicketMessages(ticket)]
     .reverse()
     .find((message) => message.direction === "inbound");
-  const source = ticket.source === "web_widget" ? "工单留言" : formatMailbox(ticket.mailbox);
+  const source = ticket.source === "web_widget" ? "工单留言" : "邮件来信";
 
   return (
     <tr className={cn("transition-colors hover:bg-muted/25", selected && "bg-primary/[0.04]")}>
@@ -1054,6 +1105,14 @@ function TicketAssignmentRow({
         <span className="block truncate rounded bg-primary/8 px-1.5 py-0.5 text-[10px] text-primary">
           {source}
         </span>
+        {ticket.source === "email" && (
+          <span
+            className="mt-1 block truncate text-[10px] text-muted-foreground"
+            title={ticket.mailbox}
+          >
+            {ticket.mailbox ?? "未提供邮箱"}
+          </span>
+        )}
       </td>
       <td className="px-2 py-3">
         <div className="flex items-center gap-1.5">
@@ -1082,9 +1141,4 @@ function TicketAssignmentRow({
       </td>
     </tr>
   );
-}
-
-function formatMailbox(mailbox?: string) {
-  const localPart = mailbox?.split("@")[0];
-  return localPart ? `${localPart} 邮箱` : "客服邮箱";
 }
