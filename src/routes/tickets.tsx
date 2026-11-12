@@ -382,7 +382,7 @@ function TicketsPage() {
       );
       updateTicket(activeTicket.id, () => ({
         ...updated,
-        status: activeTicket.status === "processing" ? "processing" : updated.status,
+        status: processingSelections[activeTicket.id] ? "processing" : "closed",
       }));
       setReplyDrafts((current) => ({
         ...current,
@@ -397,7 +397,7 @@ function TicketsPage() {
       }));
       setReplyExpanded(false);
       toast.success("邮件已发送", {
-        description: `已发送至 ${updated.contact}，后续回复会进入当前回复链`,
+        description: `已发送至 ${updated.contact}，${processingSelections[activeTicket.id] ? "保留持续处理状态" : "已标记处理完毕"}`,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "邮件发送失败，请重试");
