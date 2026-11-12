@@ -130,6 +130,7 @@ function TicketsPage() {
   const [customEndDate, setCustomEndDate] = useState("2026-08-18");
   const [query, setQuery] = useState("");
   const [replyExpanded, setReplyExpanded] = useState(false);
+  const [processingSelections, setProcessingSelections] = useState<Record<string, boolean>>({});
   const [forwardDialogOpen, setForwardDialogOpen] = useState(false);
   const [forwardMode, setForwardMode] = useState<ForwardMode>("saved");
   const [forwardAddress, setForwardAddress] = useState(initialForwardAddresses[0]);
@@ -379,7 +380,10 @@ function TicketsPage() {
         },
         sentAt,
       );
-      updateTicket(activeTicket.id, () => updated);
+      updateTicket(activeTicket.id, () => ({
+        ...updated,
+        status: activeTicket.status === "processing" ? "processing" : updated.status,
+      }));
       setReplyDrafts((current) => ({
         ...current,
         [activeTicket.id]: {
@@ -400,15 +404,20 @@ function TicketsPage() {
     }
   };
 
-  const markAsProcessing = () => {
+  const toggleProcessing = (checked: boolean) => {
     if (!activeTicket) return;
-    if (activeTicket.status === "processing") {
-      toast.info("当前工单已处于持续处理状态");
-      return;
+    setProcessingSelections((current) => ({ ...current, [activeTicket.id]: checked }));
+    if (!checked) {
+      updateTicket(activeTicket.id, (ticket) => ({
+        ...ticket,
+        status: ticket.replies.length > 0 ? "replied" : "new",
+      }));
+      toast.success("已取消持续处理标记");
+    } else {
+      const updated = markTicketProcessing(activeTicket);
+      updateTicket(activeTicket.id, () => updated);
+      toast.success("已标记为持续处理");
     }
-    const updated = markTicketProcessing(activeTicket);
-    updateTicket(activeTicket.id, () => updated);
-    toast.success("已标记为持续处理");
   };
 
   const markAsCompleted = () => {
@@ -419,6 +428,8 @@ function TicketsPage() {
     }
     const updated = completeTicketWithoutReply(activeTicket);
     updateTicket(activeTicket.id, () => updated);
+    setProcessingSelections((current) => ({ ...current, [activeTicket.id]: false }));
+    setReplyExpanded(false);
     toast.success("工单已处理完毕", {
       description: "未发送邮件，当前草稿和原回复状态保持不变",
     });
@@ -678,8 +689,8 @@ function TicketsPage() {
 
       {activeTicket && activeDraft ? (
         <main className="flex min-w-0 flex-1 flex-col bg-muted/15">
-          <header className="border-b bg-card px-5 py-3">
-            <div className="min-w-0">
+          <header className="flex items-start justify-between gap-4 border-b bg-card px-5 py-3">
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
                 <ReadStatusPill unread={Boolean(activeTicket.unread)} />
                 <TicketStatusPill status={activeTicket.status} />
@@ -697,6 +708,15 @@ function TicketsPage() {
                 {activeTicket.relatedOrderId ? ` · 订单 ${activeTicket.relatedOrderId}` : ""}
               </p>
             </div>
+            <button
+              type="button"
+              onClick={markAsCompleted}
+              disabled={activeTicket.status === "closed"}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-medium text-success hover:bg-success/10 disabled:cursor-default disabled:opacity-60"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {activeTicket.status === "closed" ? "已处理完毕" : "处理完毕"}
+            </button>
           </header>
 
           <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -720,6 +740,7 @@ function TicketsPage() {
 
           <section
             ref={replySectionRef}
+            hidden={activeTicket.status === "closed"}
             className={cn(
               "scrollbar-thin overflow-y-auto border-t bg-card px-5",
               replyExpanded ? "max-h-[520px] py-3" : "py-2",
@@ -906,40 +927,15 @@ function TicketsPage() {
                       <span className="text-[10px] text-muted-foreground">最多 5 个附件</span>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                      <div
-                        role="group"
-                        aria-label="设置工单处理状态"
-                        className="inline-flex rounded-md border bg-muted/30 p-0.5"
-                      >
-                        <button
-                          type="button"
-                          onClick={markAsProcessing}
-                          aria-pressed={activeTicket.status !== "closed"}
-                          className={cn(
-                            "inline-flex h-8 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors",
-                            activeTicket.status !== "closed"
-                              ? "bg-background text-info shadow-sm"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          标记持续处理
-                        </button>
-                        <button
-                          type="button"
-                          onClick={markAsCompleted}
-                          aria-pressed={activeTicket.status === "closed"}
-                          className={cn(
-                            "inline-flex h-8 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors",
-                            activeTicket.status === "closed"
-                              ? "bg-background text-success shadow-sm"
-                              : "text-muted-foreground hover:text-success",
-                          )}
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          标记处理完毕
-                        </button>
-                      </div>
+                      <label className="inline-flex h-9 cursor-pointer items-center gap-2 px-1 text-xs font-medium">
+                        <input
+                          type="checkbox"
+                          checked={processingSelections[activeTicket.id] ?? false}
+                          onChange={(event) => toggleProcessing(event.target.checked)}
+                          className="h-4 w-4 cursor-pointer rounded-sm border-border accent-primary"
+                        />
+                        标记持续处理
+                      </label>
                       <button
                         type="button"
                         onClick={sendReply}
