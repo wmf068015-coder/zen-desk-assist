@@ -314,9 +314,7 @@ function TicketsPage() {
   const activeTicket =
     filteredTickets.find((ticket) => ticket.id === activeId) ?? filteredTickets[0] ?? null;
   const activeMessages = activeTicket ? getTicketMessages(activeTicket) : [];
-  const forwardSourceMessage =
-    [...activeMessages].reverse().find((message) => message.direction === "inbound") ??
-    activeMessages.at(-1);
+  const forwardSourceMessage = activeMessages.at(-1);
   const defaultDraft = activeTicket ? buildTicketReplyDraft(activeTicket) : null;
   const activeDraft = activeTicket
     ? (replyDrafts[activeTicket.id] ?? {
@@ -462,7 +460,10 @@ function TicketsPage() {
       return;
     }
     const message = forwardSourceMessage;
-    if (!message) return;
+    if (!message) {
+      toast.error("请选择要转发的邮件");
+      return;
+    }
     const forwarded = buildForwardedMessage(message);
     try {
       const updated = sendTicketEmail(activeTicket, {
@@ -708,15 +709,27 @@ function TicketsPage() {
                 {activeTicket.relatedOrderId ? ` · 订单 ${activeTicket.relatedOrderId}` : ""}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={markAsCompleted}
-              disabled={activeTicket.status === "closed"}
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-medium text-success hover:bg-success/10 disabled:cursor-default disabled:opacity-60"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              {activeTicket.status === "closed" ? "已处理完毕" : "处理完毕"}
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={openForwardDialog}
+                disabled={activeTicket.status === "closed"}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium text-muted-foreground hover:bg-muted disabled:cursor-default disabled:opacity-60"
+                title="选择邮件转发"
+              >
+                <Forward className="h-3.5 w-3.5" />
+                转发
+              </button>
+              <button
+                type="button"
+                onClick={markAsCompleted}
+                disabled={activeTicket.status === "closed"}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium text-success hover:bg-success/10 disabled:cursor-default disabled:opacity-60"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {activeTicket.status === "closed" ? "已处理完毕" : "处理完毕"}
+              </button>
+            </div>
           </header>
 
           <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -798,16 +811,6 @@ function TicketsPage() {
                       >
                         <Users className="h-3.5 w-3.5" />
                         抄送
-                      </button>
-                      <button
-                        type="button"
-                        onClick={openForwardDialog}
-                        disabled={activeTicket.status === "closed"}
-                        className="inline-flex h-7 items-center gap-1 rounded px-2 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
-                        title="转发最新邮件"
-                      >
-                        <Forward className="h-3.5 w-3.5" />
-                        转发
                       </button>
                     </div>
                   </div>
@@ -970,7 +973,7 @@ function TicketsPage() {
               转发邮件
             </DialogTitle>
             <DialogDescription className="text-xs">
-              “转发至”和“新增转发地址”只能选择一种；新增邮箱仅用于本次转发。
+              默认转发当前邮件链最后一封邮件；请选择转发地址，新增邮箱仅用于本次转发。
             </DialogDescription>
           </DialogHeader>
 
@@ -1061,7 +1064,10 @@ function TicketsPage() {
                     ? ` · ${forwardSourceMessage.attachments.length} 个附件`
                     : ""}
                 </p>
-                <p className="mt-1 text-[10px] text-muted-foreground">本次将转发客户来信内容</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  本次将转发{forwardSourceMessage.direction === "inbound" ? "用户邮件" : "客服邮件"}
+                  内容
+                </p>
               </div>
             )}
           </div>
