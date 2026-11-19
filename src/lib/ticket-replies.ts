@@ -1,7 +1,9 @@
+import { amazonOriginalEmailHtml } from "./amazon-email-mock.ts";
+
 export type TicketIssueType = "order" | "logistics" | "refund" | "product" | "technical" | "other";
 export type TicketStatus = "new" | "processing" | "replied" | "closed";
 export type TicketPriority = "normal" | "high" | "urgent";
-export type TicketSource = "web_widget" | "email" | "agent";
+export type TicketSource = "web_widget" | "email" | "amazon_email" | "agent";
 export type TicketOrigin = Exclude<TicketSource, "agent">;
 export type TicketMessageDirection = "inbound" | "outbound";
 export type TicketReplyStatus = "sent" | "unsent" | "failed";
@@ -10,6 +12,7 @@ export interface TicketAttachment {
   id: string;
   name: string;
   sizeLabel: string;
+  sizeBytes?: number;
   mimeType: string;
   url?: string;
 }
@@ -36,6 +39,7 @@ export interface TicketThreadMessage {
   subject: string;
   body: string;
   bodyHtml?: string;
+  originalHtml?: string;
   sentAt: string;
   attachments: TicketAttachment[];
   deliveryStatus?: "sent" | "failed";
@@ -58,6 +62,12 @@ export interface SupportTicket {
   lastUpdatedAt: string;
   sourceSessionId?: string;
   relatedOrderId?: string;
+  purchaseDetails?: {
+    products: Array<{ name: string; imageUrl: string; url: string; asin: string }>;
+    purchasedAt?: string;
+    shippedAt?: string;
+    deliveredAt?: string;
+  };
   replies: TicketReply[];
   mailbox?: string;
   threadId?: string;
@@ -107,7 +117,8 @@ export const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
 
 export const TICKET_SOURCE_LABELS: Record<TicketSource, string> = {
   web_widget: "工单留言",
-  email: "邮件来信",
+  email: "ERP邮件",
+  amazon_email: "Amazon邮件",
   agent: "客服邮箱",
 };
 
@@ -373,6 +384,7 @@ export const initialSupportTickets: SupportTicket[] = [
         channel: "email",
         from: supportMailbox,
         to: "odwascanio@gmail.com",
+        cc: ["warehouse@neewer.com", "product-support@neewer.com"],
         subject: "Re: Action Required - Verification Needed for Order #N210948",
         body: "Hello,\n\nThanks for contacting NEEWER Customer Service. Please reply with a clear copy of the requested verification document. We will review it within one business day.",
         sentAt: "2026-08-18 08:42",
@@ -389,6 +401,7 @@ export const initialSupportTickets: SupportTicket[] = [
         source: "email",
         from: "odwascanio@gmail.com",
         to: supportMailbox,
+        cc: ["warehouse@neewer.com"],
         subject: "Action Required - Verification Needed for Order #N210948",
         body: "Hello, I received a request to verify my order. Could you confirm which document is required and whether this will delay shipment?",
         sentAt: "2026-08-18 08:06",
@@ -400,6 +413,7 @@ export const initialSupportTickets: SupportTicket[] = [
         source: "agent",
         from: supportMailbox,
         to: "odwascanio@gmail.com",
+        cc: ["warehouse@neewer.com", "product-support@neewer.com"],
         subject: "Re: Action Required - Verification Needed for Order #N210948",
         body: "Hello,\n\nThanks for contacting NEEWER Customer Service. Please reply with a clear copy of the requested verification document. We will review it within one business day.",
         sentAt: "2026-08-18 08:42",
@@ -543,7 +557,65 @@ export const initialSupportTickets: SupportTicket[] = [
       },
     ],
   },
+  {
+    id: "TK-AMAZON-20260910-0001",
+    issueType: "order",
+    title: "Richiesta da parte di Alessandro cliente Amazon",
+    description:
+      "Now it never turns on at all. I can not use it so I need to change the whole light.",
+    contact: "s8sf5mmp04hz5f7+c963c5c5-8500-4147-8683@marketplace.amazon.com",
+    attachments: [],
+    status: "processing",
+    priority: "normal",
+    source: "amazon_email",
+    customerName: "Alessandro",
+    relatedOrderId: "403-0498905-3914706",
+    purchaseDetails: {
+      products: [
+        {
+          name: "NEEWER MS150C 150W Mini RGB LED Video Light",
+          imageUrl: "/mock-products/ms150c.jpg",
+          url: "https://www.amazon.it/dp/B0CTZL5TGL",
+          asin: "B0CTZL5TGL",
+        },
+      ],
+      purchasedAt: "2026-09-01 14:32",
+      shippedAt: "2026-09-02 10:15",
+      deliveredAt: "2026-09-05 16:48",
+    },
+    submittedAt: "2026-09-10 09:18",
+    lastUpdatedAt: "2026-09-10 09:18",
+    replies: [],
+    mailbox: "shiqiaoshangam@163.com",
+    threadId: "TH-AMAZON-ALESSANDRO-0001",
+    unread: true,
+    messages: [
+      {
+        id: "mail-amazon-202609100918",
+        originalHtml: amazonOriginalEmailHtml,
+        direction: "inbound",
+        source: "amazon_email",
+        from: "s8sf5mmp04hz5f7+c963c5c5-8500-4147-8683@marketplace.amazon.com",
+        to: "shiqiaoshangam@163.com",
+        subject: "Richiesta da parte di Alessandro cliente Amazon",
+        body: "Now it never turns on at all.\nI can not use it so I need to change the whole light.",
+        sentAt: "2026-09-10 09:18",
+        attachments: [],
+      },
+    ],
+  },
 ];
+
+export function getTicketDisplayBody(message: TicketThreadMessage): string {
+  if (message.direction !== "outbound") return message.body;
+  // Older ERP samples include the fixed brand signature in the plain-text body.
+  return message.body
+    .replace(
+      /\n\s*Customer Service\s*\n\s*Email\s+\S+\s*\n\s*Website\s+www\.neewer\.com\s*\n\s*Brand Logo\s+Follow us on Reddit TikTok Instagram YouTube Facebook Twitter\s*$/i,
+      "",
+    )
+    .trimEnd();
+}
 
 export function getTicketMessages(ticket: SupportTicket): TicketThreadMessage[] {
   if (ticket.messages?.length) return ticket.messages;
@@ -596,11 +668,24 @@ export function buildTicketReplyDraft(ticket: SupportTicket): TicketEmailDraft {
   };
 }
 
+export function validateTicketAttachmentSize(
+  source: TicketOrigin,
+  attachments: TicketAttachment[],
+) {
+  if (
+    source === "amazon_email" &&
+    attachments.reduce((total, item) => total + (item.sizeBytes ?? 0), 0) > 20 * 1024 * 1024
+  ) {
+    throw new Error("Amazon邮件附件总大小不能超过20MB");
+  }
+}
+
 export function sendTicketEmail(
   ticket: SupportTicket,
   input: SendTicketEmailInput,
   sentAt = formatDateTime(new Date()),
 ): SupportTicket {
+  validateTicketAttachmentSize(ticket.source, input.attachments ?? []);
   const to = input.to.trim();
   const subject = input.subject.trim();
   const body = input.body.trim();
@@ -610,7 +695,6 @@ export function sendTicketEmail(
   if (cc.some((address) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address))) {
     throw new Error("请输入有效的抄送邮箱");
   }
-  if (!subject) throw new Error("邮件主题不能为空");
   if (!body) throw new Error("邮件正文不能为空");
   if (ticket.status === "closed") throw new Error("已关闭工单不能发送邮件");
 

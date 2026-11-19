@@ -6,9 +6,12 @@ import {
   completeTicketWithoutReply,
   getTicketReplyStatus,
   getTicketMessages,
+  getTicketDisplayBody,
+  initialSupportTickets,
   markTicketProcessing,
   retryFailedTicketEmail,
   sendTicketEmail,
+  validateTicketAttachmentSize,
 } from "./ticket-replies.ts";
 import type { SupportTicket } from "./ticket-replies.ts";
 
@@ -29,6 +32,52 @@ const baseTicket: SupportTicket = {
 };
 
 describe("ticket email replies", () => {
+  it("limits Amazon attachment totals to 20MB across multiple uploads", () => {
+    const attachment = {
+      id: "size-test",
+      name: "test.pdf",
+      sizeLabel: "20MB",
+      mimeType: "application/pdf",
+      sizeBytes: 20 * 1024 * 1024,
+    };
+    assert.doesNotThrow(() => validateTicketAttachmentSize("amazon_email", [attachment]));
+    assert.throws(
+      () =>
+        validateTicketAttachmentSize("amazon_email", [attachment, { ...attachment, sizeBytes: 1 }]),
+      /20MB/,
+    );
+    assert.doesNotThrow(() => validateTicketAttachmentSize("email", [attachment, attachment]));
+    assert.throws(
+      () =>
+        sendTicketEmail(
+          { ...baseTicket, source: "amazon_email" },
+          {
+            to: "buyer@example.com",
+            subject: "Reply",
+            body: "Hello",
+            attachments: [attachment, attachment],
+          },
+        ),
+      /20MB/,
+    );
+  });
+  it("hides only the fixed outgoing signature without changing the stored mail", () => {
+    const messages = initialSupportTickets.flatMap(getTicketMessages);
+    const signed = messages.find(
+      (message) => message.direction === "outbound" && message.body.includes("Brand Logo"),
+    )!;
+    const original = signed.body;
+    const displayed = getTicketDisplayBody(signed);
+    assert.ok(displayed.includes("Cordialement,"));
+    assert.ok(!displayed.includes("Brand Logo"));
+    assert.ok(!displayed.includes("Website www.neewer.com"));
+    assert.equal(signed.body, original);
+    assert.equal(getTicketDisplayBody({ ...signed, direction: "inbound" }), original);
+    assert.equal(
+      getTicketDisplayBody({ ...signed, body: "Please contact Customer Service for help." }),
+      "Please contact Customer Service for help.",
+    );
+  });
   it("builds an email reply draft from customer-submitted ticket details", () => {
     const draft = buildTicketReplyDraft(baseTicket);
 
@@ -89,6 +138,24 @@ describe("ticket email replies", () => {
     assert.equal(thread[1].bodyHtml, "<h2><strong>处理结果</strong></h2><p>订单将在今天发出。</p>");
     assert.equal(thread[1].includeSignature, true);
     assert.equal(thread[1].attachments[0].name, "tracking.pdf");
+  });
+
+  it("sends replies with empty or whitespace-only subjects without adding a fallback", () => {
+    for (const source of ["email", "amazon_email", "web_widget"] as const) {
+      for (const subject of ["", "   "]) {
+        const updated = sendTicketEmail(
+          { ...baseTicket, source },
+          { to: baseTicket.contact, subject, body: "Thank you for your message." },
+        );
+        assert.equal(updated.replies.at(-1)?.subject, "");
+        assert.equal(getTicketMessages(updated).at(-1)?.subject, "");
+        assert.equal(getTicketReplyStatus(updated), "sent");
+      }
+    }
+    assert.throws(
+      () => sendTicketEmail(baseTicket, { to: baseTicket.contact, subject: "", body: " " }),
+      /邮件正文不能为空/,
+    );
   });
 
   it("rejects an invalid recipient email", () => {

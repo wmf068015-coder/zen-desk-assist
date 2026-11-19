@@ -15,10 +15,12 @@ import {
   formatDateTime,
   getTicketReplyStatus,
   getTicketMessages,
+  getTicketDisplayBody,
   initialSupportTickets,
   markTicketProcessing,
   retryFailedTicketEmail,
   sendTicketEmail,
+  validateTicketAttachmentSize,
   TICKET_STATUS_LABELS,
   TICKET_SOURCE_LABELS,
   type SupportTicket,
@@ -42,13 +44,12 @@ import {
   Bold,
   Check,
   CheckCircle2,
+  Download,
   Eye,
-  Facebook,
+  ExternalLink,
   FileText,
   Forward,
-  Globe2,
   Inbox,
-  Instagram,
   Italic,
   Link2,
   List,
@@ -57,8 +58,8 @@ import {
   MailOpen,
   Maximize2,
   Minimize2,
-  Music2,
   Paperclip,
+  Package,
   PencilLine,
   Plus,
   Redo2,
@@ -66,13 +67,11 @@ import {
   RotateCcw,
   Search,
   Send,
-  Twitter,
   Underline,
   Undo2,
   User,
   Users,
   X,
-  Youtube,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -130,6 +129,7 @@ function TicketsPage() {
   const [customEndDate, setCustomEndDate] = useState("2026-08-18");
   const [query, setQuery] = useState("");
   const [replyExpanded, setReplyExpanded] = useState(false);
+  const [orderDetailsOpen, setOrderDetailsOpen] = useState(false);
   const [processingSelections, setProcessingSelections] = useState<Record<string, boolean>>({});
   const [forwardDialogOpen, setForwardDialogOpen] = useState(false);
   const [forwardMode, setForwardMode] = useState<ForwardMode>("saved");
@@ -234,12 +234,12 @@ function TicketsPage() {
       Array.from(
         new Set(
           tickets
-            .filter((ticket) => ticket.source === "email")
+            .filter((ticket) => ticket.source === sourceFilter && isEmailOrigin(ticket.source))
             .map((ticket) => ticket.mailbox)
             .filter((mailbox): mailbox is string => Boolean(mailbox)),
         ),
       ).sort(),
-    [tickets],
+    [sourceFilter, tickets],
   );
   const filteredTickets = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -274,7 +274,7 @@ function TicketsPage() {
         }
         if (ticket.source !== sourceFilter) return false;
         if (
-          sourceFilter === "email" &&
+          isEmailOrigin(sourceFilter) &&
           mailboxFilter !== "all" &&
           ticket.mailbox !== mailboxFilter
         ) {
@@ -350,16 +350,36 @@ function TicketsPage() {
   };
 
   const addReplyAttachments = (files: FileList | null) => {
-    if (!files || !activeDraft) return;
-    const attachments = Array.from(files).map((file, index) => ({
+    if (!files || !activeDraft || !activeTicket) return;
+    const selectedFiles = Array.from(files);
+    if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+    try {
+      validateTicketAttachmentSize(activeTicket.source, [
+        ...activeDraft.attachments,
+        ...selectedFiles.map((file) => ({
+          id: file.name,
+          name: file.name,
+          sizeLabel: "",
+          sizeBytes: file.size,
+          mimeType: file.type,
+        })),
+      ]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "附件添加失败");
+      return;
+    }
+    const attachments = selectedFiles.map((file, index) => ({
       id: `reply-att-${Date.now()}-${index}`,
       name: file.name,
       sizeLabel: formatFileSize(file.size),
+      sizeBytes: file.size,
       mimeType: file.type || "application/octet-stream",
       url: URL.createObjectURL(file),
     }));
-    updateDraft({ attachments: [...activeDraft.attachments, ...attachments].slice(0, 5) });
-    if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+    const combined = [...activeDraft.attachments, ...attachments];
+    updateDraft({
+      attachments: activeTicket.source === "amazon_email" ? combined : combined.slice(0, 5),
+    });
   };
 
   const sendReply = () => {
@@ -434,7 +454,7 @@ function TicketsPage() {
   };
 
   const openForwardDialog = () => {
-    if (!activeTicket) return;
+    if (!activeTicket || activeTicket.source === "amazon_email") return;
     if (activeTicket.status === "closed") {
       toast.error("已处理完毕的工单不能转发邮件");
       return;
@@ -452,7 +472,7 @@ function TicketsPage() {
   };
 
   const forwardLatestMessage = () => {
-    if (!activeTicket) return;
+    if (!activeTicket || activeTicket.source === "amazon_email") return;
     const address =
       forwardMode === "new" ? newForwardAddress.trim().toLowerCase() : forwardAddress.trim();
     if (!isEmailAddress(address)) {
@@ -515,7 +535,12 @@ function TicketsPage() {
     <div className="flex h-screen overflow-hidden bg-background">
       <AppSidebar />
 
-      <section className="flex h-full w-[420px] shrink-0 flex-col border-r bg-card">
+      <section
+        className={cn(
+          "flex h-full shrink-0 flex-col border-r bg-card",
+          sourceFilter === "amazon_email" ? "w-[320px] xl:w-[340px]" : "w-[420px]",
+        )}
+      >
         <header className="border-b px-4 pb-3 pt-4">
           <div className="flex items-start gap-3">
             <div>
@@ -525,11 +550,16 @@ function TicketsPage() {
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 border-b" role="group" aria-label="邮件与工单">
+          <div
+            className="mt-3 grid grid-cols-3 border-b"
+            role="group"
+            aria-label="ERP邮件、客服工单与Amazon邮件"
+          >
             {(
               [
-                { value: "email", label: "全部邮件", icon: Mail },
-                { value: "web_widget", label: "全部工单", icon: Inbox },
+                { value: "email", label: "ERP邮件", icon: Mail },
+                { value: "web_widget", label: "客服工单", icon: Inbox },
+                { value: "amazon_email", label: "Amazon邮件", icon: Mail },
               ] as const
             ).map(({ value, label, icon: Icon }) => (
               <button
@@ -557,7 +587,7 @@ function TicketsPage() {
           <div
             className={cn(
               "mt-3 grid gap-1.5",
-              sourceFilter === "email" ? "grid-cols-3" : "grid-cols-2",
+              isEmailOrigin(sourceFilter) ? "grid-cols-3" : "grid-cols-2",
             )}
           >
             <select
@@ -572,7 +602,7 @@ function TicketsPage() {
               <option value="180">近 6 个月</option>
               <option value="custom">自定义时间</option>
             </select>
-            {sourceFilter === "email" && (
+            {isEmailOrigin(sourceFilter) && (
               <select
                 value={mailboxFilter}
                 onChange={(event) => setMailboxFilter(event.target.value)}
@@ -682,7 +712,7 @@ function TicketsPage() {
           {filteredTickets.length === 0 && (
             <div className="flex h-48 flex-col items-center justify-center gap-2 px-8 text-center text-sm text-muted-foreground">
               <Inbox className="h-6 w-6 opacity-50" />
-              当前条件下没有{sourceFilter === "email" ? "邮件" : "工单"}
+              当前条件下没有{isEmailOrigin(sourceFilter) ? "邮件" : "工单"}
             </div>
           )}
         </div>
@@ -690,36 +720,50 @@ function TicketsPage() {
 
       {activeTicket && activeDraft ? (
         <main className="flex min-w-0 flex-1 flex-col bg-muted/15">
-          <header className="flex items-start justify-between gap-4 border-b bg-card px-5 py-3">
-            <div className="min-w-0 flex-1">
+          <header className="flex flex-wrap items-start justify-between gap-3 border-b bg-card px-5 py-3">
+            <div className="min-w-0 flex-[1_1_240px]">
               <div className="flex flex-wrap items-center gap-1.5">
                 <ReadStatusPill unread={Boolean(activeTicket.unread)} />
                 <TicketStatusPill status={activeTicket.status} />
                 <ReplyStatusPill status={getTicketReplyStatus(activeTicket)} />
                 <SourcePill source={activeTicket.source} />
-                {activeTicket.source === "email" && (
+                {isEmailOrigin(activeTicket.source) && (
                   <span className="text-[10px] text-muted-foreground">
                     来源邮箱：{activeTicket.mailbox ?? "未提供"}
                   </span>
                 )}
               </div>
-              <h2 className="mt-1.5 truncate text-base font-semibold">{activeTicket.title}</h2>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
+              <h2 className="mt-1.5 text-base font-semibold [overflow-wrap:anywhere]">
+                {activeTicket.title}
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
                 {activeTicket.contact} · {activeMessages.length} 封邮件 · {activeTicket.id}
                 {activeTicket.relatedOrderId ? ` · 订单 ${activeTicket.relatedOrderId}` : ""}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={openForwardDialog}
-                disabled={activeTicket.status === "closed"}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium text-muted-foreground hover:bg-muted disabled:cursor-default disabled:opacity-60"
-                title="选择邮件转发"
-              >
-                <Forward className="h-3.5 w-3.5" />
-                转发
-              </button>
+              {activeTicket.source === "amazon_email" && (
+                <button
+                  type="button"
+                  onClick={() => setOrderDetailsOpen(true)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium hover:bg-muted xl:hidden"
+                >
+                  <Package className="h-3.5 w-3.5" />
+                  订单详情
+                </button>
+              )}
+              {activeTicket.source !== "amazon_email" && (
+                <button
+                  type="button"
+                  onClick={openForwardDialog}
+                  disabled={activeTicket.status === "closed"}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium text-muted-foreground hover:bg-muted disabled:cursor-default disabled:opacity-60"
+                  title="选择邮件转发"
+                >
+                  <Forward className="h-3.5 w-3.5" />
+                  转发
+                </button>
+              )}
               <button
                 type="button"
                 onClick={markAsCompleted}
@@ -839,7 +883,7 @@ function TicketsPage() {
                       onChange={(event) => updateDraft({ subject: event.target.value })}
                       disabled={activeTicket.status === "closed"}
                       className="h-8 min-w-0 bg-transparent outline-none placeholder:text-muted-foreground disabled:opacity-50"
-                      placeholder="邮件主题"
+                      placeholder="邮件主题（选填）"
                     />
                   </div>
                   {threadAttachments.length > 0 && (
@@ -879,7 +923,6 @@ function TicketsPage() {
                     }
                     onChange={({ html, text }) => updateDraft({ bodyHtml: html, body: text })}
                   />
-                  <EmailSignature />
 
                   {activeDraft.attachments.length > 0 && (
                     <div className="mb-2 flex flex-wrap gap-1.5">
@@ -927,7 +970,9 @@ function TicketsPage() {
                         <Paperclip className="h-3.5 w-3.5" />
                         添加附件
                       </button>
-                      <span className="text-[10px] text-muted-foreground">最多 5 个附件</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {activeTicket.source === "amazon_email" ? "最多20MB" : "最多 5 个附件"}
+                      </span>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <label className="inline-flex h-9 cursor-pointer items-center gap-2 px-1 text-xs font-medium">
@@ -960,6 +1005,27 @@ function TicketsPage() {
           <MailOpen className="h-8 w-8 opacity-50" />
           请选择一封邮件工单
         </main>
+      )}
+      {activeTicket?.source === "amazon_email" && (
+        <>
+          <aside
+            aria-label="购买商品与订单详情"
+            className="scrollbar-thin hidden h-full w-[280px] shrink-0 overflow-y-auto border-l bg-card xl:block 2xl:w-[300px]"
+          >
+            <AmazonOrderDetails key={activeTicket.id} ticket={activeTicket} />
+          </aside>
+          <Dialog open={orderDetailsOpen} onOpenChange={setOrderDetailsOpen}>
+            <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto p-0">
+              <DialogHeader className="border-b px-5 py-4 pr-12">
+                <DialogTitle>购买商品与订单详情</DialogTitle>
+                <DialogDescription className="sr-only">
+                  当前 Amazon 邮件关联的商品与订单
+                </DialogDescription>
+              </DialogHeader>
+              <AmazonOrderDetails key={activeTicket.id} ticket={activeTicket} hideTitle />
+            </DialogContent>
+          </Dialog>
+        </>
       )}
       <AttachmentPreviewDialog
         attachment={previewAttachment}
@@ -1132,7 +1198,7 @@ function TicketListItem({
           <time>{receivedAt}</time>
         </dd>
 
-        {ticket.source === "email" && (
+        {isEmailOrigin(ticket.source) && (
           <>
             <dt className="text-[10px] text-muted-foreground">来源邮箱</dt>
             <dd
@@ -1154,7 +1220,9 @@ function TicketListItem({
           {ticket.title}
         </dd>
 
-        <dt className="text-[10px] text-muted-foreground">买家邮箱</dt>
+        <dt className="text-[10px] text-muted-foreground">
+          {ticket.source === "amazon_email" ? "发件地址" : "买家邮箱"}
+        </dt>
         <dd className="min-w-0 truncate text-[11px] text-muted-foreground">{ticket.contact}</dd>
         <dt className="text-[10px] text-muted-foreground">处理人</dt>
         <dd
@@ -1181,6 +1249,79 @@ function TicketListItem({
   );
 }
 
+function AmazonOrderDetails({
+  ticket,
+  hideTitle = false,
+}: {
+  ticket: SupportTicket;
+  hideTitle?: boolean;
+}) {
+  const details = ticket.purchaseDetails;
+  const [failedImages, setFailedImages] = useState<string[]>([]);
+
+  return (
+    <div className="px-5 py-5">
+      {!hideTitle && <h3 className="mb-5 text-sm font-semibold">购买商品</h3>}
+      <div className="space-y-4">
+        {details?.products.length ? (
+          details.products.map((product) => (
+            <a
+              key={product.asin}
+              href={product.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-start gap-3 rounded-md outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+              title={`${product.name}（新窗口打开）`}
+            >
+              <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-md border bg-white">
+                {failedImages.includes(product.asin) ? (
+                  <Package
+                    className="h-6 w-6 text-muted-foreground"
+                    aria-label="商品图片暂不可用"
+                  />
+                ) : (
+                  <img
+                    src={product.imageUrl}
+                    alt={product.name}
+                    referrerPolicy="no-referrer"
+                    className="h-full w-full object-contain"
+                    onError={() => setFailedImages((current) => [...current, product.asin])}
+                  />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium leading-5 group-hover:text-primary group-hover:underline [overflow-wrap:anywhere]">
+                  {product.name}
+                  <ExternalLink className="ml-1 inline h-3 w-3" aria-hidden="true" />
+                </p>
+                <p className="mt-1 text-[10px] text-muted-foreground">ASIN: {product.asin}</p>
+              </div>
+            </a>
+          ))
+        ) : (
+          <p className="text-xs text-muted-foreground">暂无商品信息</p>
+        )}
+      </div>
+      <hr className="my-5 border-border" />
+      <dl className="space-y-5 text-xs">
+        {[
+          ["订单号", ticket.relatedOrderId],
+          ["购买时间", details?.purchasedAt],
+          ["发货时间", details?.shippedAt],
+          ["送达时间", details?.deliveredAt],
+        ].map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="mt-1.5 font-medium leading-5 tabular-nums [overflow-wrap:anywhere]">
+              {value ?? "暂无信息"}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 function ThreadMessage({
   message,
   onPreviewAttachment,
@@ -1193,12 +1334,14 @@ function ThreadMessage({
   onEditFailed: (message: TicketThreadMessage) => void;
 }) {
   const inbound = message.direction === "inbound";
+  const [originalOpen, setOriginalOpen] = useState(false);
+  const ccRecipients = message.cc?.map((address) => address.trim()).filter(Boolean) ?? [];
 
   return (
     <article
       className={cn(
-        "rounded-md border bg-card px-4 py-3 shadow-sm",
-        inbound ? "mr-10" : "ml-10 border-primary/25 bg-primary/[0.025]",
+        "rounded-md border bg-card px-4 py-3",
+        inbound ? "mr-4 lg:mr-10" : "ml-4 border-primary/25 bg-primary/[0.025] lg:ml-10",
       )}
     >
       <div className="flex items-start gap-3">
@@ -1208,16 +1351,23 @@ function ThreadMessage({
             inbound ? "bg-muted text-foreground" : "bg-primary/10 text-primary",
           )}
         >
-          {inbound ? <User className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+          {message.source === "web_widget" ? (
+            <User className="h-4 w-4" />
+          ) : (
+            <Mail className="h-4 w-4" />
+          )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
+            <div className="min-w-0 flex-[1_1_200px]">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="truncate text-xs font-semibold">{message.from}</span>
+                <span className="min-w-0 select-text text-sm font-semibold [overflow-wrap:anywhere]">
+                  <span className="sr-only">发件人：</span>
+                  {message.from}
+                </span>
                 <MessageSourcePill message={message} />
                 {message.deliveryStatus === "sent" && (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] text-success">
+                  <span className="inline-flex items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">
                     {message.action === "forward" ? (
                       <Forward className="h-2.5 w-2.5" />
                     ) : (
@@ -1227,22 +1377,76 @@ function ThreadMessage({
                   </span>
                 )}
                 {message.deliveryStatus === "failed" && (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-destructive">
+                  <span className="inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
                     <AlertCircle className="h-2.5 w-2.5" />
                     发送失败
                   </span>
                 )}
               </div>
-              <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                发送至 {message.to}
-                {message.cc?.length ? ` · 抄送 ${message.cc.join(", ")}` : ""}
-              </p>
             </div>
-            <time className="shrink-0 text-[10px] text-muted-foreground">{message.sentAt}</time>
+            <time className="shrink-0 text-[11px] text-muted-foreground">{message.sentAt}</time>
+          </div>
+
+          <div className="mt-1 flex items-start gap-3">
+            <dl className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] gap-x-1.5 gap-y-1 text-xs leading-7 text-muted-foreground">
+              <dt>发送至</dt>
+              <dd className="min-w-0 select-text [overflow-wrap:anywhere]">{message.to}</dd>
+              {ccRecipients.length > 0 && (
+                <>
+                  <dt>抄送至</dt>
+                  <dd className="min-w-0">
+                    <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                      {ccRecipients.map((address, index) => (
+                        <li
+                          key={`${address}-${index}`}
+                          className="min-w-0 select-text [overflow-wrap:anywhere]"
+                        >
+                          {address}
+                        </li>
+                      ))}
+                    </ul>
+                  </dd>
+                </>
+              )}
+            </dl>
+            {message.source === "amazon_email" && inbound && (
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setOriginalOpen(true)}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs text-muted-foreground hover:text-primary"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  原始邮件
+                </button>
+                <Dialog open={originalOpen} onOpenChange={setOriginalOpen}>
+                  <DialogContent className="flex max-h-[90vh] w-[calc(100%-2rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0">
+                    <DialogHeader className="shrink-0 border-b px-5 py-3 pr-12">
+                      <DialogTitle className="text-sm">原始邮件</DialogTitle>
+                      <DialogDescription className="break-words text-xs">
+                        {message.subject}
+                      </DialogDescription>
+                    </DialogHeader>
+                    {message.originalHtml ? (
+                      <iframe
+                        title="Amazon原始邮件"
+                        sandbox=""
+                        referrerPolicy="no-referrer"
+                        srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:;">${message.originalHtml}`}
+                        className="h-[75vh] min-h-0 w-full border-0 bg-white"
+                      />
+                    ) : (
+                      <div className="p-10 text-center text-sm text-muted-foreground">
+                        原始邮件暂不可用
+                      </div>
+                    )}
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
           </div>
 
           <div className="mt-3 border-t pt-3">
-            <p className="mb-2 text-xs font-medium">{message.subject}</p>
             {message.bodyHtml ? (
               <div
                 className="text-sm leading-6 text-foreground/90 [&_a]:text-primary [&_a]:underline [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-bold [&_h3]:text-base [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
@@ -1250,10 +1454,9 @@ function ThreadMessage({
               />
             ) : (
               <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/90">
-                {message.body}
+                {getTicketDisplayBody(message)}
               </p>
             )}
-            {message.includeSignature && <EmailSignature compact />}
           </div>
 
           {message.attachments.length > 0 && (
@@ -1316,18 +1519,40 @@ function AttachmentPreviewDialog({
   onClose: () => void;
 }) {
   const previewUrl = attachment ? getAttachmentPreviewUrl(attachment) : undefined;
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadAttachment = async () => {
+    if (!attachment || !previewUrl || downloading) return;
+    setDownloading(true);
+    try {
+      const response = await fetch(previewUrl);
+      if (!response.ok) throw new Error("附件下载失败");
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = attachment.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch {
+      toast.error("附件下载失败，请稍后重试");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <Dialog open={Boolean(attachment)} onOpenChange={(open) => !open && onClose()}>
       {attachment && (
-        <DialogContent className="max-h-[88vh] max-w-4xl gap-0 overflow-hidden p-0">
-          <DialogHeader className="border-b px-5 py-3 pr-12">
+        <DialogContent className="flex max-h-[88vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b px-5 py-3 pr-12">
             <DialogTitle className="truncate text-sm">{attachment.name}</DialogTitle>
             <DialogDescription className="text-xs">
               {attachment.sizeLabel} · {attachment.mimeType}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex min-h-[440px] items-center justify-center overflow-auto bg-muted/30 p-5">
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-5">
             {attachment.mimeType.startsWith("image/") && previewUrl ? (
               <img
                 src={previewUrl}
@@ -1343,6 +1568,13 @@ function AttachmentPreviewDialog({
               >
                 当前浏览器无法播放该视频。
               </video>
+            ) : attachment.mimeType === "application/pdf" &&
+              previewUrl?.startsWith("/mock-attachments/") ? (
+              <img
+                src={previewUrl.replace(/\.pdf$/, ".png")}
+                alt={attachment.name}
+                className="max-h-[68vh] max-w-full object-contain"
+              />
             ) : attachment.mimeType === "application/pdf" && previewUrl ? (
               <iframe
                 src={previewUrl}
@@ -1357,6 +1589,20 @@ function AttachmentPreviewDialog({
               <GenericAttachmentPreview attachment={attachment} />
             )}
           </div>
+          <DialogFooter className="shrink-0 items-center border-t px-5 py-3">
+            {!previewUrl && (
+              <span className="mr-auto text-xs text-muted-foreground">原文件暂不可用</span>
+            )}
+            <button
+              type="button"
+              disabled={!previewUrl || downloading}
+              onClick={downloadAttachment}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {downloading ? "下载中…" : "下载附件"}
+            </button>
+          </DialogFooter>
         </DialogContent>
       )}
     </Dialog>
@@ -1486,6 +1732,14 @@ function GenericAttachmentPreview({ attachment }: { attachment: TicketAttachment
 
 function getAttachmentPreviewUrl(attachment: TicketAttachment) {
   if (attachment.url) return attachment.url;
+  const sampleFiles: Record<string, string> = {
+    "att-mariia-order-details": "commandes-neewer.pdf",
+    "att-invoice-nf24638": "Facture-NF24638.pdf",
+    "att-verification": "verification-document.pdf",
+    "att-vat-number-validation": "vat-number-validation.png",
+    "att-widget-order": "order-status.png",
+  };
+  if (sampleFiles[attachment.id]) return `/mock-attachments/${sampleFiles[attachment.id]}`;
   if (attachment.id === "att-camera-setup") {
     return "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=1200&auto=format&fit=crop";
   }
@@ -1709,41 +1963,6 @@ function ToolbarDivider() {
   return <span className="mx-0.5 h-5 w-px bg-border" />;
 }
 
-function EmailSignature({ compact = false }: { compact?: boolean }) {
-  return (
-    <div
-      className={cn(
-        "mt-2 grid grid-cols-2 overflow-hidden border border-dashed bg-background text-foreground",
-        compact ? "max-w-xl text-[10px]" : "text-[11px]",
-      )}
-    >
-      <div className="flex min-h-12 items-center border-b border-r px-3 font-semibold">
-        Customer Service
-      </div>
-      <div className="flex min-h-12 flex-col justify-center gap-1 border-b px-3">
-        <span className="inline-flex items-center gap-1.5">
-          <Mail className="h-3.5 w-3.5" />
-          service@neewer.com
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Globe2 className="h-3.5 w-3.5" />
-          www.neewer.com
-        </span>
-      </div>
-      <div className="flex min-h-14 items-center border-r px-3 text-2xl font-black tracking-normal">
-        NEEWER
-      </div>
-      <div className="flex min-h-14 items-center justify-center gap-3 px-3">
-        <Music2 className="h-4 w-4" aria-label="TikTok" />
-        <Instagram className="h-4 w-4 text-pink-600" aria-label="Instagram" />
-        <Youtube className="h-4 w-4 text-red-600" aria-label="YouTube" />
-        <Facebook className="h-4 w-4 text-blue-700" aria-label="Facebook" />
-        <Twitter className="h-4 w-4 text-sky-500" aria-label="X" />
-      </div>
-    </div>
-  );
-}
-
 function ReadStatusPill({ unread, prominent = false }: { unread: boolean; prominent?: boolean }) {
   return (
     <span
@@ -1842,6 +2061,10 @@ function MessageSourcePill({ message }: { message: TicketThreadMessage }) {
 function formatMailboxSource(mailbox?: string) {
   const localPart = mailbox?.split("@")[0]?.trim();
   return localPart ? `${localPart} 邮箱` : "客服邮箱";
+}
+
+function isEmailOrigin(source: TicketOrigin) {
+  return source === "email" || source === "amazon_email";
 }
 
 function parseTicketDate(value: string) {

@@ -243,6 +243,7 @@ function AdminPage() {
     visibleIds.length > 0 && visibleIds.every((ticketId) => selectedIdSet.has(ticketId));
   const someVisibleSelected =
     !allVisibleSelected && visibleIds.some((ticketId) => selectedIdSet.has(ticketId));
+  const assignmentLabel = getAssignmentSourceLabel(assignmentSource);
 
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = someVisibleSelected;
@@ -455,14 +456,15 @@ function AdminPage() {
 
                 <section className="min-w-0 overflow-hidden rounded-md border bg-card">
                   <div
-                    className="grid grid-cols-2 border-b px-4"
+                    className="grid grid-cols-3 border-b px-4"
                     role="group"
                     aria-label="分配类型"
                   >
                     {(
                       [
-                        { value: "email", label: "邮件分配", icon: Mail },
-                        { value: "web_widget", label: "工单分配", icon: Inbox },
+                        { value: "email", label: "ERP邮件分配", icon: Mail },
+                        { value: "web_widget", label: "客服工单分配", icon: Inbox },
+                        { value: "amazon_email", label: "Amazon邮件分配", icon: Mail },
                       ] as const
                     ).map(({ value, label, icon: Icon }) => (
                       <button
@@ -490,12 +492,9 @@ function AdminPage() {
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
                     <div>
-                      <h2 className="text-sm font-semibold">
-                        {assignmentSource === "email" ? "邮件" : "工单"}处理人分配
-                      </h2>
+                      <h2 className="text-sm font-semibold">{assignmentLabel}处理人分配</h2>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        当前显示 {filteredTickets.length} 条
-                        {assignmentSource === "email" ? "邮件" : "工单"} · 收件时间由近到远
+                        当前显示 {filteredTickets.length} 条 {assignmentLabel} · 收件时间由近到远
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -635,10 +634,10 @@ function AdminPage() {
                               className="h-4 w-4 rounded border-border accent-primary"
                             />
                           </th>
-                          <th className="w-[31%] px-2 py-2.5 font-medium">
-                            {assignmentSource === "email" ? "邮件" : "工单"}
+                          <th className="w-[31%] px-2 py-2.5 font-medium">{assignmentLabel}</th>
+                          <th className="w-[22%] px-2 py-2.5 font-medium">
+                            {assignmentSource === "amazon_email" ? "发件地址" : "买家邮箱"}
                           </th>
-                          <th className="w-[22%] px-2 py-2.5 font-medium">买家邮箱</th>
                           <th className="w-[14%] px-2 py-2.5 font-medium">来源</th>
                           <th className="w-[24%] px-2 py-2.5 font-medium">处理人</th>
                         </tr>
@@ -660,7 +659,7 @@ function AdminPage() {
                   {filteredTickets.length === 0 && (
                     <div className="flex h-44 flex-col items-center justify-center text-sm text-muted-foreground">
                       <UserCog className="mb-2 h-6 w-6 opacity-50" />
-                      当前条件下没有{assignmentSource === "email" ? "邮件" : "工单"}
+                      当前条件下没有{isEmailAssignmentSource(assignmentSource) ? "邮件" : "工单"}
                     </div>
                   )}
 
@@ -770,8 +769,8 @@ function AdminPage() {
           <DialogHeader>
             <DialogTitle className="text-base tracking-normal">批量分配处理人</DialogTitle>
             <DialogDescription>
-              将选中的 {selectedIds.length} {assignmentSource === "email" ? "封邮件" : "条工单"}
-              分配给指定客服。
+              将选中的 {selectedIds.length}{" "}
+              {isEmailAssignmentSource(assignmentSource) ? "封邮件" : "条工单"}分配给指定客服。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -1065,6 +1064,16 @@ function AssignmentStat({
   );
 }
 
+function getAssignmentSourceLabel(source: SupportTicket["source"]) {
+  if (source === "email") return "ERP邮件";
+  if (source === "amazon_email") return "Amazon邮件";
+  return "客服工单";
+}
+
+function isEmailAssignmentSource(source: SupportTicket["source"]) {
+  return source === "email" || source === "amazon_email";
+}
+
 function TicketAssignmentRow({
   ticket,
   selected,
@@ -1079,7 +1088,12 @@ function TicketAssignmentRow({
   const latestInbound = [...getTicketMessages(ticket)]
     .reverse()
     .find((message) => message.direction === "inbound");
-  const source = ticket.source === "web_widget" ? "工单留言" : "邮件来信";
+  const source =
+    ticket.source === "web_widget"
+      ? "工单留言"
+      : ticket.source === "amazon_email"
+        ? "Amazon邮件"
+        : "ERP邮件";
 
   return (
     <tr className={cn("transition-colors hover:bg-muted/25", selected && "bg-primary/[0.04]")}>
@@ -1105,7 +1119,7 @@ function TicketAssignmentRow({
         <span className="block truncate rounded bg-primary/8 px-1.5 py-0.5 text-[10px] text-primary">
           {source}
         </span>
-        {ticket.source === "email" && (
+        {ticket.source !== "web_widget" && (
           <span
             className="mt-1 block truncate text-[10px] text-muted-foreground"
             title={ticket.mailbox}
