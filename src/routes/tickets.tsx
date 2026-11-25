@@ -576,16 +576,16 @@ function TicketsPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="fixed inset-0 flex h-dvh overflow-clip overscroll-none bg-background [contain:layout_paint]">
       <AppSidebar />
 
       <section
         className={cn(
-          "flex h-full shrink-0 flex-col border-r bg-card",
+          "flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r bg-card",
           sourceFilter === "amazon_email" ? "w-[320px] xl:w-[340px]" : "w-[420px]",
         )}
       >
-        <header className="border-b px-4 pb-3 pt-4">
+        <header className="shrink-0 border-b px-4 pb-3 pt-4">
           <div className="flex items-start gap-3">
             <div>
               <div className="flex items-center gap-2">
@@ -744,7 +744,7 @@ function TicketsPage() {
           </div>
         </header>
 
-        <div className="scrollbar-thin flex-1 overflow-y-auto">
+        <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {filteredTickets.map((ticket) => (
             <TicketListItem
               key={ticket.id}
@@ -763,8 +763,8 @@ function TicketsPage() {
       </section>
 
       {activeTicket && activeDraft ? (
-        <main className="flex min-w-0 flex-1 flex-col bg-muted/15">
-          <header className="flex flex-wrap items-start justify-between gap-3 border-b bg-card px-5 py-3">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-muted/15">
+          <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b bg-card px-5 py-3">
             <div className="min-w-0 flex-[1_1_240px]">
               <div className="flex flex-wrap items-center gap-1.5">
                 <ReadStatusPill unread={Boolean(activeTicket.unread)} />
@@ -820,7 +820,7 @@ function TicketsPage() {
             </div>
           </header>
 
-          <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
             <div className="mx-auto max-w-4xl space-y-3">
               <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
                 <span className="h-px flex-1 bg-border" />
@@ -843,7 +843,7 @@ function TicketsPage() {
             ref={replySectionRef}
             hidden={activeTicket.status === "closed"}
             className={cn(
-              "scrollbar-thin overflow-y-auto border-t bg-card px-5",
+              "scrollbar-thin max-h-full shrink-0 overflow-y-auto overscroll-contain border-t bg-card px-5",
               replyExpanded ? "max-h-[520px] py-3" : "py-2",
             )}
           >
@@ -1066,7 +1066,7 @@ function TicketsPage() {
         <>
           <aside
             aria-label="购买商品与订单详情"
-            className="scrollbar-thin hidden h-full w-[280px] shrink-0 overflow-y-auto border-l bg-card xl:block 2xl:w-[300px]"
+            className="scrollbar-thin hidden h-full min-h-0 w-[280px] shrink-0 overflow-y-auto overscroll-contain border-l bg-card xl:block 2xl:w-[300px]"
           >
             <AmazonOrderDetails key={activeTicket.id} ticket={activeTicket} />
           </aside>
@@ -1984,7 +1984,7 @@ function RichTextEditor({
           onInput={syncValue}
           onBlur={syncValue}
           className={cn(
-            "scrollbar-thin overflow-y-auto px-3 py-2 text-sm leading-6 outline-none transition-[min-height,max-height] duration-200 disabled:opacity-50 [&_a]:text-primary [&_a]:underline [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-bold [&_h3]:text-base [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5",
+            "scrollbar-thin overflow-y-auto overscroll-contain px-3 py-2 text-sm leading-6 outline-none transition-[min-height,max-height] duration-200 disabled:opacity-50 [&_a]:text-primary [&_a]:underline [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-bold [&_h3]:text-base [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5",
             editorExpanded ? "min-h-40 max-h-[40vh]" : "min-h-16 max-h-24",
           )}
         />
