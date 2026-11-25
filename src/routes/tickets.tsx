@@ -36,6 +36,7 @@ import {
   subscribeTicketAssignments,
 } from "@/lib/ticket-assignments";
 import { cn } from "@/lib/utils";
+import { generateMockEmailReply } from "@/lib/ai-email-reply";
 import {
   AlignCenter,
   AlignLeft,
@@ -54,6 +55,7 @@ import {
   Link2,
   List,
   ListOrdered,
+  Loader2,
   Mail,
   MailOpen,
   Maximize2,
@@ -67,6 +69,7 @@ import {
   RotateCcw,
   Search,
   Send,
+  Sparkles,
   Underline,
   Undo2,
   User,
@@ -138,6 +141,9 @@ function TicketsPage() {
   const [savedForwardAddresses, setSavedForwardAddresses] = useState(initialForwardAddresses);
   const [previewAttachment, setPreviewAttachment] = useState<TicketAttachment | null>(null);
   const [replyDrafts, setReplyDrafts] = useState<Record<string, ReplyDraftState>>({});
+  const [aiGeneratingId, setAiGeneratingId] = useState<string | null>(null);
+  const [aiReplaceDialogOpen, setAiReplaceDialogOpen] = useState(false);
+  const aiRequestRef = useRef<AbortController | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const replySectionRef = useRef<HTMLElement>(null);
   const importedTicketIdsRef = useRef(new Set<string>());
@@ -314,6 +320,15 @@ function TicketsPage() {
   const activeTicket =
     filteredTickets.find((ticket) => ticket.id === activeId) ?? filteredTickets[0] ?? null;
   const activeMessages = activeTicket ? getTicketMessages(activeTicket) : [];
+  const aiGenerating = aiGeneratingId === activeTicket?.id;
+  useEffect(() => {
+    setAiGeneratingId(null);
+    setAiReplaceDialogOpen(false);
+    return () => {
+      aiRequestRef.current?.abort();
+      aiRequestRef.current = null;
+    };
+  }, [activeTicket?.id, activeTicket?.status]);
   const forwardSourceMessage = activeMessages.at(-1);
   const defaultDraft = activeTicket ? buildTicketReplyDraft(activeTicket) : null;
   const activeDraft = activeTicket
@@ -347,6 +362,35 @@ function TicketsPage() {
       ...current,
       [activeTicket.id]: { ...activeDraft, ...patch },
     }));
+  };
+
+  const generateAiReply = async () => {
+    if (!activeTicket || !activeDraft || activeTicket.status === "closed" ||
+      activeTicket.source === "amazon_email" || aiRequestRef.current) return;
+    setAiReplaceDialogOpen(false);
+    const controller = new AbortController();
+    aiRequestRef.current = controller;
+    setAiGeneratingId(activeTicket.id);
+    try {
+      const body = await generateMockEmailReply(activeTicket, controller.signal);
+      if (controller.signal.aborted) return;
+      setReplyDrafts((current) => ({
+        ...current,
+        [activeTicket.id]: {
+          ...(current[activeTicket.id] ?? activeDraft),
+          body,
+          bodyHtml: textToHtml(body),
+        },
+      }));
+      toast.success("AI 回复已填入正文，请确认后发送");
+    } catch {
+      if (!controller.signal.aborted) toast.error("AI 回复生成失败，请重试，原草稿已保留");
+    } finally {
+      if (aiRequestRef.current === controller) {
+        aiRequestRef.current = null;
+        setAiGeneratingId(null);
+      }
+    }
   };
 
   const addReplyAttachments = (files: FileList | null) => {
@@ -915,7 +959,7 @@ function TicketsPage() {
                   <RichTextEditor
                     key={activeTicket.id}
                     value={activeDraft.bodyHtml}
-                    disabled={activeTicket.status === "closed"}
+                    disabled={activeTicket.status === "closed" || aiGenerating}
                     placeholder={
                       activeTicket.status === "closed"
                         ? "工单已关闭，无法继续回复"
@@ -953,7 +997,19 @@ function TicketsPage() {
                   )}
 
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {activeTicket.source !== "amazon_email" && (
+                        <button
+                          type="button"
+                          onClick={() => activeDraft.body.trim() ? setAiReplaceDialogOpen(true) : void generateAiReply()}
+                          disabled={aiGenerating || activeTicket.status === "closed"}
+                          aria-busy={aiGenerating}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2.5 text-xs font-medium text-primary hover:bg-primary/10 disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {aiGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          {aiGenerating ? "生成中…" : "AI 回复"}
+                        </button>
+                      )}
                       <input
                         ref={attachmentInputRef}
                         type="file"
@@ -987,7 +1043,7 @@ function TicketsPage() {
                       <button
                         type="button"
                         onClick={sendReply}
-                        disabled={!activeDraft.body.trim() || activeTicket.status === "closed"}
+                        disabled={!activeDraft.body.trim() || activeTicket.status === "closed" || aiGenerating}
                         className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <Send className="h-4 w-4" />
@@ -1027,6 +1083,18 @@ function TicketsPage() {
           </Dialog>
         </>
       )}
+      <Dialog open={aiReplaceDialogOpen} onOpenChange={setAiReplaceDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>替换当前回复正文？</DialogTitle>
+            <DialogDescription>生成的 AI 回复将替换当前正文，收件人、主题、抄送和附件保持不变。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button type="button" onClick={() => setAiReplaceDialogOpen(false)} className="h-9 rounded-md border px-4 text-sm">保留草稿</button>
+            <button type="button" onClick={() => void generateAiReply()} className="h-9 rounded-md bg-primary px-4 text-sm text-primary-foreground">生成并替换</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AttachmentPreviewDialog
         attachment={previewAttachment}
         onClose={() => setPreviewAttachment(null)}
