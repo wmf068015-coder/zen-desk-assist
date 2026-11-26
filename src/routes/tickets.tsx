@@ -956,17 +956,29 @@ function TicketsPage() {
                       </div>
                     </div>
                   )}
-                  <RichTextEditor
-                    key={activeTicket.id}
-                    value={activeDraft.bodyHtml}
-                    disabled={activeTicket.status === "closed" || aiGenerating}
-                    placeholder={
-                      activeTicket.status === "closed"
-                        ? "工单已关闭，无法继续回复"
-                        : "输入邮件内容，Enter 换行..."
-                    }
-                    onChange={({ html, text }) => updateDraft({ bodyHtml: html, body: text })}
-                  />
+                  <div className="relative" aria-busy={aiGenerating}>
+                    <RichTextEditor
+                      key={activeTicket.id}
+                      value={activeDraft.bodyHtml}
+                      disabled={activeTicket.status === "closed" || aiGenerating}
+                      placeholder={
+                        activeTicket.status === "closed"
+                          ? "工单已关闭，无法继续回复"
+                          : "输入邮件内容，Enter 换行..."
+                      }
+                      onChange={({ html, text }) => updateDraft({ bodyHtml: html, body: text })}
+                    />
+                    {aiGenerating && (
+                      <div
+                        role="status"
+                        aria-live="polite"
+                        className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border border-primary/20 bg-background/95 px-4 py-3 text-center"
+                      >
+                        <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-primary motion-reduce:animate-none" />
+                        <p className="text-sm font-medium text-primary">AI 正在生成回复，请稍候…</p>
+                      </div>
+                    )}
+                  </div>
 
                   {activeDraft.attachments.length > 0 && (
                     <div className="mb-2 flex flex-wrap gap-1.5">

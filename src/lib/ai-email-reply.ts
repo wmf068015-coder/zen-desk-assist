@@ -56,7 +56,7 @@ export async function generateMockEmailReply(
     const timer = setTimeout(() => {
       signal.removeEventListener("abort", abort);
       resolve();
-    }, 900);
+    }, 3000);
     signal.addEventListener("abort", abort, { once: true });
   });
   signal.throwIfAborted();
