@@ -36,7 +36,7 @@ import {
   subscribeTicketAssignments,
 } from "@/lib/ticket-assignments";
 import { cn } from "@/lib/utils";
-import { generateMockEmailReply } from "@/lib/ai-email-reply";
+import { generateMockEmailReply, needsHumanReview, type AiReplyReviewState } from "@/lib/ai-email-reply";
 import {
   AlignCenter,
   AlignLeft,
@@ -95,7 +95,7 @@ type TicketFilter = "all" | "read" | "unread" | "processing" | "closed" | "faile
 type TimeRange = "7" | "30" | "90" | "180" | "custom";
 type ForwardMode = "saved" | "new";
 
-interface ReplyDraftState {
+interface ReplyDraftState extends AiReplyReviewState {
   to: string;
   cc: string;
   showCc: boolean;
@@ -360,7 +360,14 @@ function TicketsPage() {
     if (!activeTicket || !activeDraft) return;
     setReplyDrafts((current) => ({
       ...current,
-      [activeTicket.id]: { ...activeDraft, ...patch },
+      [activeTicket.id]: {
+        ...activeDraft,
+        ...patch,
+        ...(activeDraft.requiresHumanReview && (
+          (patch.body !== undefined && patch.body !== activeDraft.body) ||
+          (patch.bodyHtml !== undefined && patch.bodyHtml !== activeDraft.bodyHtml)
+        ) ? { humanReviewCompleted: false } : {}),
+      },
     }));
   };
 
@@ -372,19 +379,25 @@ function TicketsPage() {
     aiRequestRef.current = controller;
     setAiGeneratingId(activeTicket.id);
     try {
-      const body = await generateMockEmailReply(activeTicket, controller.signal);
+      const result = await generateMockEmailReply(activeTicket, controller.signal);
       if (controller.signal.aborted) return;
+      if (!result.body.trim()) throw new Error("Empty AI reply");
       setReplyDrafts((current) => ({
         ...current,
         [activeTicket.id]: {
           ...(current[activeTicket.id] ?? activeDraft),
-          body,
-          bodyHtml: textToHtml(body),
+          body: result.body,
+          bodyHtml: textToHtml(result.body),
+          requiresHumanReview: result.requiresHumanReview,
+          humanReviewCompleted: false,
         },
       }));
-      toast.success("AI 回复已填入正文，请确认后发送");
+      if (result.requiresHumanReview) toast.info("AI 回复需要人工审核，审核完毕后才可发送");
+      else toast.success("AI 回复已填入正文，请确认后发送");
     } catch {
-      if (!controller.signal.aborted) toast.error("AI 回复生成失败，请重试，原草稿已保留");
+      if (!controller.signal.aborted) {
+        toast.error("AI 回复生成失败，请重试。");
+      }
     } finally {
       if (aiRequestRef.current === controller) {
         aiRequestRef.current = null;
@@ -428,6 +441,11 @@ function TicketsPage() {
 
   const sendReply = () => {
     if (!activeTicket || !activeDraft) return;
+    if (aiRequestRef.current) return;
+    if (needsHumanReview(activeDraft)) {
+      toast.info("请先完成人工审核");
+      return;
+    }
     try {
       const sentAt = formatDateTime(new Date());
       const updated = sendTicketEmail(
@@ -455,6 +473,8 @@ function TicketsPage() {
           body: "",
           bodyHtml: "",
           attachments: [],
+          requiresHumanReview: false,
+          humanReviewCompleted: false,
         },
       }));
       setReplyExpanded(false);
@@ -483,7 +503,7 @@ function TicketsPage() {
   };
 
   const markAsCompleted = () => {
-    if (!activeTicket) return;
+    if (!activeTicket || aiRequestRef.current) return;
     if (activeTicket.status === "closed") {
       toast.info("当前工单已处理完毕");
       return;
@@ -547,7 +567,7 @@ function TicketsPage() {
   };
 
   const quickRetryFailedMessage = (message: TicketThreadMessage) => {
-    if (!activeTicket) return;
+    if (!activeTicket || aiRequestRef.current) return;
     try {
       const updated = retryFailedTicketEmail(activeTicket, message.id);
       updateTicket(activeTicket.id, () => updated);
@@ -558,7 +578,7 @@ function TicketsPage() {
   };
 
   const editFailedMessage = (message: TicketThreadMessage) => {
-    if (!activeTicket) return;
+    if (!activeTicket || aiRequestRef.current) return;
     setReplyDrafts((current) => ({
       ...current,
       [activeTicket.id]: {
@@ -811,7 +831,7 @@ function TicketsPage() {
               <button
                 type="button"
                 onClick={markAsCompleted}
-                disabled={activeTicket.status === "closed"}
+                disabled={activeTicket.status === "closed" || aiGenerating}
                 className="inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium text-success hover:bg-success/10 disabled:cursor-default disabled:opacity-60"
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
@@ -1043,6 +1063,19 @@ function TicketsPage() {
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
+                      <div className="flex items-center gap-2">
+                      {activeDraft.requiresHumanReview && (
+                        <label className="inline-flex h-9 cursor-pointer items-center gap-2 whitespace-nowrap px-1 text-xs font-medium">
+                          <input
+                            type="checkbox"
+                            checked={activeDraft.humanReviewCompleted ?? false}
+                            onChange={(event) => updateDraft({ humanReviewCompleted: event.target.checked })}
+                            disabled={aiGenerating}
+                            className="h-4 w-4 cursor-pointer rounded-sm border-border accent-primary disabled:cursor-not-allowed disabled:opacity-40"
+                          />
+                          人工审核完毕
+                        </label>
+                      )}
                       <label className="inline-flex h-9 cursor-pointer items-center gap-2 px-1 text-xs font-medium">
                         <input
                           type="checkbox"
@@ -1052,10 +1085,11 @@ function TicketsPage() {
                         />
                         标记持续处理
                       </label>
+                      </div>
                       <button
                         type="button"
                         onClick={sendReply}
-                        disabled={!activeDraft.body.trim() || activeTicket.status === "closed" || aiGenerating}
+                        disabled={!activeDraft.body.trim() || activeTicket.status === "closed" || aiGenerating || needsHumanReview(activeDraft)}
                         className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <Send className="h-4 w-4" />

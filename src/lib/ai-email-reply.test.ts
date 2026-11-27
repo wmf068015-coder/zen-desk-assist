@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildMockEmailReply, generateMockEmailReply } from "./ai-email-reply.ts";
+import { buildMockEmailReply, generateMockEmailReply, needsHumanReview } from "./ai-email-reply.ts";
 import { initialSupportTickets } from "./ticket-replies.ts";
 
 describe("mock AI email reply", () => {
@@ -39,5 +39,40 @@ describe("mock AI email reply", () => {
     const result = generateMockEmailReply(initialSupportTickets[0], controller.signal);
     controller.abort();
     await assert.rejects(result, { name: "AbortError" });
+  });
+
+  it("blocks flagged replies until human review is completed", () => {
+    assert.equal(needsHumanReview({}), false);
+    assert.equal(needsHumanReview({ requiresHumanReview: true }), true);
+    assert.equal(
+      needsHumanReview({ requiresHumanReview: true, humanReviewCompleted: true }),
+      false,
+    );
+    assert.equal(
+      needsHumanReview({ requiresHumanReview: true, humanReviewCompleted: false }),
+      true,
+    );
+  });
+
+  it("returns the human review flag with the generated body", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const ticket = initialSupportTickets.find((item) => item.id === "TK-MAIL-20260817-0096")!;
+    const result = generateMockEmailReply(ticket, new AbortController().signal);
+    t.mock.timers.tick(3000);
+    const reply = await result;
+    assert.equal(reply.requiresHumanReview, true);
+    assert.ok(reply.body.trim());
+  });
+
+  it("reports a failed demo generation and allows a successful retry", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const ticket = initialSupportTickets.find((item) => item.id === "TK-MAIL-20260818-0038")!;
+    const first = generateMockEmailReply(ticket, new AbortController().signal);
+    const failure = assert.rejects(first, { message: "AI 回复生成失败，请重试。" });
+    t.mock.timers.tick(3000);
+    await failure;
+    const retry = generateMockEmailReply(ticket, new AbortController().signal);
+    t.mock.timers.tick(3000);
+    assert.equal((await retry).requiresHumanReview, false);
   });
 });

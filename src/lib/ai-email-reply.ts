@@ -1,5 +1,22 @@
 import { getTicketMessages, type SupportTicket } from "./ticket-replies.ts";
 
+export interface AiEmailReplyResult {
+  body: string;
+  requiresHumanReview: boolean;
+}
+
+export interface AiReplyReviewState {
+  requiresHumanReview?: boolean;
+  humanReviewCompleted?: boolean;
+}
+
+export function needsHumanReview(draft: AiReplyReviewState): boolean {
+  return Boolean(draft.requiresHumanReview && !draft.humanReviewCompleted);
+}
+
+// Demo fixtures: verification fails once; F100 requires human review.
+const failedDemoTicketIds = new Set<string>();
+
 export function buildMockEmailReply(ticket: SupportTicket): string {
   if (ticket.source === "amazon_email" || ticket.status === "closed") {
     throw new Error("当前邮件不支持 AI 回复");
@@ -45,7 +62,7 @@ export function buildMockEmailReply(ticket: SupportTicket): string {
 export async function generateMockEmailReply(
   ticket: SupportTicket,
   signal: AbortSignal,
-): Promise<string> {
+): Promise<AiEmailReplyResult> {
   signal.throwIfAborted();
   const reply = buildMockEmailReply(ticket);
   await new Promise<void>((resolve, reject) => {
@@ -60,5 +77,12 @@ export async function generateMockEmailReply(
     signal.addEventListener("abort", abort, { once: true });
   });
   signal.throwIfAborted();
-  return reply;
+  if (ticket.id === "TK-MAIL-20260818-0038" && !failedDemoTicketIds.has(ticket.id)) {
+    failedDemoTicketIds.add(ticket.id);
+    throw new Error("AI 回复生成失败，请重试。");
+  }
+  return {
+    body: reply,
+    requiresHumanReview: ticket.id === "TK-MAIL-20260817-0096",
+  };
 }
